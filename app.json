@@ -1,12 +1,12 @@
 {
   "expo": {
     "name": "SIP!",
-    "slug": "sip-praktikum",
+    "slug": "test-prak",
     "owner": "ppk6-d1",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "sip",
+    "scheme": "testprak",
     "userInterfaceStyle": "light",
     "ios": {
       "icon": "./assets/expo.icon"
