@@ -1,13 +1,13 @@
 {
   "expo": {
     "name": "SIP!",
-    "slug": "test-prak",
+    "slug": "sip-praktikum",
     "owner": "ppk6-d1",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "testprak",
-    "userInterfaceStyle": "automatic",
+    "scheme": "sip",
+    "userInterfaceStyle": "light",
     "ios": {
       "icon": "./assets/expo.icon"
     },
@@ -19,7 +19,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.ppk6-d1.sip"
+      "package": "com.ppk6d1.sip"
     },
     "web": {
       "output": "static",
