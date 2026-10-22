@@ -1,7 +1,8 @@
 {
   "expo": {
-    "name": "test-prak",
+    "name": "SIP!",
     "slug": "test-prak",
+    "owner": "ppk6-d1",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -18,7 +19,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.ruthhhs.testprak"
+      "package": "com.ppk6-d1.sip"
     },
     "web": {
       "output": "static",
