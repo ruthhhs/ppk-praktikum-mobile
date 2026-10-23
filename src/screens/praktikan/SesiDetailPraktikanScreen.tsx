@@ -17,190 +17,16 @@ import {
   type AlasanPenolakanPresensi,
   type DataSuksesPresensi,
 } from '../../components/praktikan/PresensiFeedbackModals';
-
-export type Role = 'asisten' | 'praktikan';
-
-export type User = {
-  id: string;
-  nama: string;
-  role: Role;
-  nim?: string;
-};
-
-export type Praktikum = {
-  id: string;
-  nama: string;
-  lab: string;
-};
-
-export type SesiStatus = 'belum_dibuka' | 'dibuka' | 'ditutup';
-
-export type Sesi = {
-  id: string;
-  praktikumId: string;
-  pertemuanKe: number;
-  kelas: string;
-  lab: string;
-  tanggal: string;
-  jamMulai: string;
-  jamSelesai: string;
-  status: SesiStatus;
-  kodePresensi?: string;
-  catatan?: string;
-};
-
-export type Presensi = {
-  id: string;
-  sesiId: string;
-  userId: string;
-  waktu: string;
-};
-
-const WARNA = {
-  bg: '#FFFFFF',
-  surface: '#FEFFE0',
-  text: '#17454A',
-  textMuted: 'rgba(23, 69, 74, 0.7)',
-  primary: '#B5185F',
-  highlight: '#D0E86E',
-  accent: '#35C1C2',
-  border: 'rgba(23, 69, 74, 0.15)',
-} as const;
-
-const PRAKTIKAN_AKTIF: User = {
-  id: 'praktikan-01',
-  nama: 'Siti Aisyah',
-  role: 'praktikan',
-  nim: '2210512001',
-};
-
-const DAFTAR_PRAKTIKUM: Record<string, Praktikum> = {
-  'prak-01': {
-    id: 'prak-01',
-    nama: 'Basis Data',
-    lab: 'Lab Komputer 2',
-  },
-  'prak-02': {
-    id: 'prak-02',
-    nama: 'Pemrograman Web',
-    lab: 'Lab Komputer 1',
-  },
-  'prak-03': {
-    id: 'prak-03',
-    nama: 'Jaringan Komputer',
-    lab: 'Lab Jaringan',
-  },
-};
-
-const SESI_CONTOH: Sesi[] = [
-  {
-    id: 'sesi-01',
-    praktikumId: 'prak-01',
-    pertemuanKe: 3,
-    kelas: 'A',
-    lab: 'Lab Komputer 2',
-    tanggal: '2026-10-23',
-    jamMulai: '08:00',
-    jamSelesai: '10:00',
-    status: 'dibuka',
-    kodePresensi: '4827',
-    catatan: 'Normalisasi basis data',
-  },
-  {
-    id: 'sesi-02',
-    praktikumId: 'prak-02',
-    pertemuanKe: 2,
-    kelas: 'B',
-    lab: 'Lab Komputer 1',
-    tanggal: '2026-10-24',
-    jamMulai: '10:00',
-    jamSelesai: '12:00',
-    status: 'belum_dibuka',
-    catatan: 'Layout responsif dengan Flexbox',
-  },
-  {
-    id: 'sesi-03',
-    praktikumId: 'prak-03',
-    pertemuanKe: 4,
-    kelas: 'A',
-    lab: 'Lab Jaringan',
-    tanggal: '2026-10-25',
-    jamMulai: '13:00',
-    jamSelesai: '15:00',
-    status: 'belum_dibuka',
-    catatan: 'Pengalamatan IPv4 dan subnetting',
-  },
-  {
-    id: 'sesi-04',
-    praktikumId: 'prak-01',
-    pertemuanKe: 2,
-    kelas: 'A',
-    lab: 'Lab Komputer 2',
-    tanggal: '2026-10-20',
-    jamMulai: '08:00',
-    jamSelesai: '10:00',
-    status: 'ditutup',
-    catatan: 'Model relasional dan kunci primer',
-  },
-  {
-    id: 'sesi-05',
-    praktikumId: 'prak-02',
-    pertemuanKe: 1,
-    kelas: 'B',
-    lab: 'Lab Komputer 1',
-    tanggal: '2026-10-18',
-    jamMulai: '10:00',
-    jamSelesai: '12:00',
-    status: 'ditutup',
-    catatan: 'Struktur dasar dokumen HTML dan CSS',
-  },
-];
-
-const PRESENSI_AWAL: Presensi[] = [
-  {
-    id: 'presensi-01',
-    sesiId: 'sesi-04',
-    userId: 'praktikan-01',
-    waktu: '2026-10-20T08:03:12+07:00',
-  },
-];
-
-const LABEL_STATUS: Record<SesiStatus, string> = {
-  belum_dibuka: 'Belum dibuka',
-  dibuka: 'Dibuka',
-  ditutup: 'Ditutup',
-};
-
-function ambilNamaPraktikum(praktikumId: string): string {
-  return DAFTAR_PRAKTIKUM[praktikumId]?.nama ?? 'Praktikum';
-}
-
-function formatTanggal(tanggal: string): string {
-  const [tahun, bulan, hari] = tanggal.split('-').map(Number);
-  const date = new Date(tahun, bulan - 1, hari);
-
-  return date
-    .toLocaleDateString('id-ID', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-    })
-    .replace('.', '');
-}
-
-function formatRentangJam(jamMulai: string, jamSelesai: string): string {
-  return `${jamMulai.replace(':', '.')} - ${jamSelesai.replace(':', '.')}`;
-}
-
-function formatJamPresensi(waktuIso: string): string {
-  const date = new Date(waktuIso);
-  if (Number.isNaN(date.getTime())) {
-    return '08.03';
-  }
-  const jam = String(date.getHours()).padStart(2, '0');
-  const menit = String(date.getMinutes()).padStart(2, '0');
-  return `${jam}.${menit}`;
-}
+import {
+  ambilNamaPraktikum,
+  formatJamPresensi,
+  formatRentangJam,
+  formatTanggalIndonesia,
+  LABEL_STATUS,
+  usePraktikanStore,
+  WARNA,
+  type SesiStatus,
+} from '../../components/praktikan/praktikanStore';
 
 function StatusBadge({ status }: { status: SesiStatus }) {
   return (
@@ -237,6 +63,14 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function SesiDetailPraktikanScreen() {
+  const {
+    currentUser,
+    praktikum,
+    sesi,
+    presensi,
+    catatPresensiPraktikan,
+  } = usePraktikanStore();
+
   const params = useLocalSearchParams<{ sesiId?: string | string[] }>();
   const paramSesiId = Array.isArray(params.sesiId)
     ? params.sesiId[0]
@@ -245,8 +79,6 @@ export default function SesiDetailPraktikanScreen() {
   const [selectedSesiId, setSelectedSesiId] = useState<string>(
     paramSesiId ?? 'sesi-01'
   );
-  const [daftarPresensi, setDaftarPresensi] =
-    useState<Presensi[]>(PRESENSI_AWAL);
   const [formTerbuka, setFormTerbuka] = useState(false);
   const [dataSuksesModal, setDataSuksesModal] =
     useState<DataSuksesPresensi | null>(null);
@@ -255,18 +87,18 @@ export default function SesiDetailPraktikanScreen() {
 
   const sesiAktif = useMemo(() => {
     const targetId = paramSesiId ?? selectedSesiId;
-    return SESI_CONTOH.find((item) => item.id === targetId) ?? null;
-  }, [paramSesiId, selectedSesiId]);
+    return sesi.find((item) => item.id === targetId) ?? null;
+  }, [paramSesiId, selectedSesiId, sesi]);
 
   const presensiSaya = useMemo(() => {
     if (!sesiAktif) {
       return undefined;
     }
-    return daftarPresensi.find(
+    return presensi.find(
       (item) =>
-        item.sesiId === sesiAktif.id && item.userId === PRAKTIKAN_AKTIF.id
+        item.sesiId === sesiAktif.id && item.userId === currentUser.id
     );
-  }, [daftarPresensi, sesiAktif]);
+  }, [currentUser.id, presensi, sesiAktif]);
 
   const kembaliKeJadwal = () => {
     if (router.canGoBack()) {
@@ -301,53 +133,39 @@ export default function SesiDetailPraktikanScreen() {
       return { ok: false };
     }
 
-    if (sesiAktif.status === 'belum_dibuka') {
+    const hasil = catatPresensiPraktikan(sesiAktif.id, currentUser.id, kode);
+
+    if (!hasil.ok) {
+      if (
+        hasil.reason === 'kode_kosong' ||
+        hasil.reason === 'kode_format' ||
+        hasil.reason === 'kode_salah'
+      ) {
+        return {
+          ok: false,
+          pesanErrorInput: hasil.pesan,
+        };
+      }
+
       setFormTerbuka(false);
-      setAlasanInfoModal('belum_dibuka');
+      if (
+        hasil.reason === 'sudah_presensi' ||
+        hasil.reason === 'belum_dibuka' ||
+        hasil.reason === 'sudah_ditutup'
+      ) {
+        setAlasanInfoModal(hasil.reason);
+      }
       return { ok: false };
     }
 
-    if (sesiAktif.status === 'ditutup') {
-      setFormTerbuka(false);
-      setAlasanInfoModal('sudah_ditutup');
-      return { ok: false };
-    }
-
-    // Pengecekan aturan bisnis: 1 praktikan hanya boleh 1 kali presensi per sesi
-    const sudahTercatat = daftarPresensi.some(
-      (item) =>
-        item.sesiId === sesiAktif.id && item.userId === PRAKTIKAN_AKTIF.id
-    );
-    if (sudahTercatat) {
-      setFormTerbuka(false);
-      setAlasanInfoModal('sudah_presensi');
-      return { ok: false };
-    }
-
-    if (!sesiAktif.kodePresensi || kode !== sesiAktif.kodePresensi) {
-      return {
-        ok: false,
-        pesanErrorInput: 'Kode salah',
-      };
-    }
-
-    const waktuSekarang = new Date().toISOString();
-    const catatanBaru: Presensi = {
-      id: `presensi-${Date.now()}`,
-      sesiId: sesiAktif.id,
-      userId: PRAKTIKAN_AKTIF.id,
-      waktu: waktuSekarang,
-    };
-
-    setDaftarPresensi((prev) => [...prev, catatanBaru]);
     setFormTerbuka(false);
     setDataSuksesModal({
-      namaPraktikan: PRAKTIKAN_AKTIF.nama,
-      nim: PRAKTIKAN_AKTIF.nim,
-      namaPraktikum: ambilNamaPraktikum(sesiAktif.praktikumId),
+      namaPraktikan: currentUser.nama,
+      nim: currentUser.nim,
+      namaPraktikum: ambilNamaPraktikum(praktikum, sesiAktif.praktikumId),
       pertemuanKe: sesiAktif.pertemuanKe,
       kelas: sesiAktif.kelas,
-      waktuIso: waktuSekarang,
+      waktuIso: hasil.presensi.waktu,
     });
     return { ok: true };
   };
@@ -392,7 +210,7 @@ export default function SesiDetailPraktikanScreen() {
     );
   }
 
-  const namaPraktikum = ambilNamaPraktikum(sesiAktif.praktikumId);
+  const namaPraktikum = ambilNamaPraktikum(praktikum, sesiAktif.praktikumId);
   const sudahPresensi = Boolean(presensiSaya);
   const jamHadir = presensiSaya ? formatJamPresensi(presensiSaya.waktu) : '';
 
@@ -411,7 +229,7 @@ export default function SesiDetailPraktikanScreen() {
       : sesiAktif.status === 'dibuka' && !sudahPresensi
         ? 'Pastikan kamu berada di ruang praktikum dan siap memasukkan kode presensi dari asisten.'
         : sesiAktif.status === 'dibuka' && sudahPresensi
-          ? `Kehadiran atas nama ${PRAKTIKAN_AKTIF.nama} (${PRAKTIKAN_AKTIF.nim}) telah tercatat.`
+          ? `Kehadiran atas nama ${currentUser.nama}${currentUser.nim ? ` (${currentUser.nim})` : ''} telah tercatat.`
           : sudahPresensi
             ? `Kamu tercatat hadir pada sesi ini pukul ${jamHadir}.`
             : 'Batas waktu presensi untuk pertemuan ini telah berakhir.';
@@ -448,7 +266,7 @@ export default function SesiDetailPraktikanScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.previewChipRow}
             >
-              {SESI_CONTOH.map((item) => {
+              {sesi.map((item) => {
                 const aktif = item.id === sesiAktif.id;
                 return (
                   <Pressable
@@ -468,8 +286,8 @@ export default function SesiDetailPraktikanScreen() {
                         aktif && styles.previewChipTextActive,
                       ]}
                     >
-                      {ambilNamaPraktikum(item.praktikumId)} P{item.pertemuanKe}{' '}
-                      ({LABEL_STATUS[item.status]})
+                      {ambilNamaPraktikum(praktikum, item.praktikumId)} P
+                      {item.pertemuanKe} ({LABEL_STATUS[item.status]})
                     </Text>
                   </Pressable>
                 );
@@ -492,10 +310,11 @@ export default function SesiDetailPraktikanScreen() {
           <View style={styles.divider} />
 
           <View style={styles.infoList}>
+            <InfoRow label="Praktikan" value={currentUser.nama} />
             <InfoRow label="Ruang Lab" value={sesiAktif.lab} />
             <InfoRow
               label="Tanggal"
-              value={formatTanggal(sesiAktif.tanggal)}
+              value={formatTanggalIndonesia(sesiAktif.tanggal)}
             />
             <InfoRow
               label="Waktu"

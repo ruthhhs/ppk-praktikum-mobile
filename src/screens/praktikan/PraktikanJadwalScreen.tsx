@@ -9,176 +9,23 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-
-export type Role = 'asisten' | 'praktikan';
-
-export type User = {
-  id: string;
-  nama: string;
-  role: Role;
-  nim?: string;
-};
-
-export type Praktikum = {
-  id: string;
-  nama: string;
-  lab: string;
-};
-
-export type SesiStatus = 'belum_dibuka' | 'dibuka' | 'ditutup';
-
-export type Sesi = {
-  id: string;
-  praktikumId: string;
-  pertemuanKe: number;
-  kelas: string;
-  lab: string;
-  tanggal: string;
-  jamMulai: string;
-  jamSelesai: string;
-  status: SesiStatus;
-  kodePresensi?: string;
-  catatan?: string;
-  hadir?: number;
-  total?: number;
-};
-
-export type Presensi = {
-  id: string;
-  sesiId: string;
-  userId: string;
-  waktu: string;
-};
+import {
+  ambilNamaDepan,
+  ambilNamaPraktikum,
+  formatJamPresensi,
+  formatRentangJam,
+  formatTanggalIndonesia,
+  LABEL_STATUS,
+  TANGGAL_HARI_INI,
+  usePraktikanStore,
+  WARNA,
+  type Presensi,
+  type Role,
+  type Sesi,
+  type SesiStatus,
+} from '../../components/praktikan/praktikanStore';
 
 type FilterJadwal = 'semua' | 'hari_ini' | SesiStatus;
-
-const WARNA = {
-  bg: '#FFFFFF',
-  surface: '#FEFFE0',
-  text: '#17454A',
-  textMuted: 'rgba(23, 69, 74, 0.7)',
-  primary: '#B5185F',
-  highlight: '#D0E86E',
-  accent: '#35C1C2',
-  border: 'rgba(23, 69, 74, 0.15)',
-  softSurface: '#F5F8F4',
-} as const;
-
-const TANGGAL_HARI_INI = '2026-10-23';
-
-// Data sementara untuk Tugas C1 sesuai kontrak Bagian 5 PRD.md.
-// Akan disambungkan ke useApp() dari AppContext setelah tugas Dev A di-merge.
-const PRAKTIKAN_AKTIF: User = {
-  id: 'praktikan-01',
-  nama: 'Siti Aisyah',
-  role: 'praktikan',
-  nim: '2210512001',
-};
-
-const DAFTAR_PRAKTIKUM: Record<string, Praktikum> = {
-  'prak-01': {
-    id: 'prak-01',
-    nama: 'Basis Data',
-    lab: 'Lab Komputer 2',
-  },
-  'prak-02': {
-    id: 'prak-02',
-    nama: 'Pemrograman Web',
-    lab: 'Lab Komputer 1',
-  },
-  'prak-03': {
-    id: 'prak-03',
-    nama: 'Jaringan Komputer',
-    lab: 'Lab Jaringan',
-  },
-};
-
-const SESI_CONTOH: Sesi[] = [
-  {
-    id: 'sesi-01',
-    praktikumId: 'prak-01',
-    pertemuanKe: 3,
-    kelas: 'A',
-    lab: 'Lab Komputer 2',
-    tanggal: '2026-10-23',
-    jamMulai: '08:00',
-    jamSelesai: '10:00',
-    status: 'dibuka',
-    kodePresensi: '4827',
-    catatan: 'Normalisasi basis data',
-    hadir: 12,
-    total: 30,
-  },
-  {
-    id: 'sesi-02',
-    praktikumId: 'prak-02',
-    pertemuanKe: 2,
-    kelas: 'B',
-    lab: 'Lab Komputer 1',
-    tanggal: '2026-10-24',
-    jamMulai: '10:00',
-    jamSelesai: '12:00',
-    status: 'belum_dibuka',
-    hadir: 0,
-    total: 28,
-  },
-  {
-    id: 'sesi-03',
-    praktikumId: 'prak-03',
-    pertemuanKe: 4,
-    kelas: 'A',
-    lab: 'Lab Jaringan',
-    tanggal: '2026-10-25',
-    jamMulai: '13:00',
-    jamSelesai: '15:00',
-    status: 'belum_dibuka',
-    hadir: 0,
-    total: 26,
-  },
-  {
-    id: 'sesi-04',
-    praktikumId: 'prak-01',
-    pertemuanKe: 2,
-    kelas: 'A',
-    lab: 'Lab Komputer 2',
-    tanggal: '2026-10-20',
-    jamMulai: '08:00',
-    jamSelesai: '10:00',
-    status: 'ditutup',
-    catatan: 'Model relasional dan kunci primer',
-    hadir: 26,
-    total: 30,
-  },
-  {
-    id: 'sesi-05',
-    praktikumId: 'prak-02',
-    pertemuanKe: 1,
-    kelas: 'B',
-    lab: 'Lab Komputer 1',
-    tanggal: '2026-10-18',
-    jamMulai: '10:00',
-    jamSelesai: '12:00',
-    status: 'ditutup',
-    catatan: 'Struktur dasar dokumen HTML dan CSS',
-    hadir: 24,
-    total: 28,
-  },
-];
-
-const PRESENSI_CONTOH: Presensi[] = [
-  {
-    id: 'presensi-01',
-    sesiId: 'sesi-04',
-    userId: 'praktikan-01',
-    waktu: '2026-10-20T08:03:12+07:00',
-  },
-];
-
-const LABEL_STATUS: Record<SesiStatus, string> = {
-  belum_dibuka: 'Belum dibuka',
-  dibuka: 'Dibuka',
-  ditutup: 'Ditutup',
-};
 
 const LABEL_FILTER: Record<FilterJadwal, string> = {
   semua: 'Semua',
@@ -193,42 +40,6 @@ const URUTAN_STATUS: Record<SesiStatus, number> = {
   belum_dibuka: 1,
   ditutup: 2,
 };
-
-function ambilNamaDepan(namaLengkap: string): string {
-  const bagian = namaLengkap.trim().split(/\s+/);
-  return bagian[0] || namaLengkap;
-}
-
-function ambilNamaPraktikum(praktikumId: string): string {
-  return DAFTAR_PRAKTIKUM[praktikumId]?.nama ?? 'Praktikum';
-}
-
-function formatTanggal(tanggal: string): string {
-  const [tahun, bulan, hari] = tanggal.split('-').map(Number);
-  const date = new Date(tahun, bulan - 1, hari);
-
-  return date
-    .toLocaleDateString('id-ID', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-    })
-    .replace('.', '');
-}
-
-function formatRentangJam(jamMulai: string, jamSelesai: string): string {
-  return `${jamMulai.replace(':', '.')} - ${jamSelesai.replace(':', '.')}`;
-}
-
-function formatJamPresensi(waktuIso: string): string {
-  const date = new Date(waktuIso);
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-  const jam = String(date.getHours()).padStart(2, '0');
-  const menit = String(date.getMinutes()).padStart(2, '0');
-  return `${jam}.${menit}`;
-}
 
 export function StatusBadge({ status }: { status: SesiStatus }) {
   return (
@@ -335,7 +146,9 @@ export function SessionCard({
 
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>Tanggal</Text>
-          <Text style={styles.detailValue}>{formatTanggal(sesi.tanggal)}</Text>
+          <Text style={styles.detailValue}>
+            {formatTanggalIndonesia(sesi.tanggal)}
+          </Text>
         </View>
 
         <View style={styles.detailRow}>
@@ -415,27 +228,35 @@ function EmptyJadwalState({
 }
 
 export default function PraktikanJadwalScreen() {
+  const {
+    currentUser,
+    daftarPraktikan,
+    praktikum,
+    sesi,
+    presensi,
+    pilihPraktikanAktif,
+  } = usePraktikanStore();
   const [filterAktif, setFilterAktif] = useState<FilterJadwal>('semua');
 
   const petaPresensiSaya = useMemo(() => {
     const map = new Map<string, Presensi>();
-    for (const item of PRESENSI_CONTOH) {
-      if (item.userId === PRAKTIKAN_AKTIF.id) {
+    for (const item of presensi) {
+      if (item.userId === currentUser.id) {
         map.set(item.sesiId, item);
       }
     }
     return map;
-  }, []);
+  }, [currentUser.id, presensi]);
 
   const daftarSesiTerurut = useMemo(() => {
-    const hasilFilter = SESI_CONTOH.filter((sesi) => {
+    const hasilFilter = sesi.filter((item) => {
       if (filterAktif === 'semua') {
         return true;
       }
       if (filterAktif === 'hari_ini') {
-        return sesi.tanggal === TANGGAL_HARI_INI;
+        return item.tanggal === TANGGAL_HARI_INI;
       }
-      return sesi.status === filterAktif;
+      return item.status === filterAktif;
     });
 
     return [...hasilFilter].sort((a, b) => {
@@ -445,11 +266,11 @@ export default function PraktikanJadwalScreen() {
       }
       return a.tanggal.localeCompare(b.tanggal);
     });
-  }, [filterAktif]);
+  }, [filterAktif, sesi]);
 
   const sesiDibuka = useMemo(
-    () => SESI_CONTOH.find((sesi) => sesi.status === 'dibuka'),
-    []
+    () => sesi.find((item) => item.status === 'dibuka'),
+    [sesi]
   );
 
   const bukaDetailSesi = (sesiId: string) => {
@@ -472,7 +293,8 @@ export default function PraktikanJadwalScreen() {
               <Text style={styles.screenTitle}>Jadwal Praktikum</Text>
               <View style={styles.greetingRow}>
                 <Text style={styles.greetingText}>
-                  Halo, {ambilNamaDepan(PRAKTIKAN_AKTIF.nama)}
+                  Halo, {ambilNamaDepan(currentUser.nama)}
+                  {currentUser.nim ? ` · ${currentUser.nim}` : ''}
                 </Text>
                 <View style={styles.roleChip}>
                   <Text style={styles.roleChipText}>Praktikan</Text>
@@ -480,10 +302,47 @@ export default function PraktikanJadwalScreen() {
               </View>
             </View>
 
+            <View style={styles.identitySwitcherBox}>
+              <Text style={styles.identitySwitcherLabel}>
+                Identitas Praktikan (Simulasi Demo):
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.identityRow}
+              >
+                {daftarPraktikan.map((user) => {
+                  const terpilih = user.id === currentUser.id;
+                  return (
+                    <Pressable
+                      key={user.id}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: terpilih }}
+                      onPress={() => pilihPraktikanAktif(user.id)}
+                      style={({ pressed }) => [
+                        styles.identityChip,
+                        terpilih && styles.identityChipSelected,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.identityChipText,
+                          terpilih && styles.identityChipTextSelected,
+                        ]}
+                      >
+                        {ambilNamaDepan(user.nama)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
             {sesiDibuka && (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Sesi sedang dibuka: ${ambilNamaPraktikum(sesiDibuka.praktikumId)} pertemuan ${sesiDibuka.pertemuanKe}. Ketuk untuk membuka detail dan presensi.`}
+                accessibilityLabel={`Sesi sedang dibuka: ${ambilNamaPraktikum(praktikum, sesiDibuka.praktikumId)} pertemuan ${sesiDibuka.pertemuanKe}. Ketuk untuk membuka detail dan presensi.`}
                 onPress={() => bukaDetailSesi(sesiDibuka.id)}
                 style={({ pressed }) => [
                   styles.activeBanner,
@@ -501,8 +360,8 @@ export default function PraktikanJadwalScreen() {
                 </View>
 
                 <Text style={styles.activeBannerTitle}>
-                  {ambilNamaPraktikum(sesiDibuka.praktikumId)} · Pertemuan{' '}
-                  {sesiDibuka.pertemuanKe}
+                  {ambilNamaPraktikum(praktikum, sesiDibuka.praktikumId)} ·
+                  Pertemuan {sesiDibuka.pertemuanKe}
                 </Text>
                 <Text style={styles.activeBannerSub}>
                   Kelas {sesiDibuka.kelas} · {sesiDibuka.lab}
@@ -548,7 +407,7 @@ export default function PraktikanJadwalScreen() {
           return (
             <SessionCard
               sesi={item}
-              namaPraktikum={ambilNamaPraktikum(item.praktikumId)}
+              namaPraktikum={ambilNamaPraktikum(praktikum, item.praktikumId)}
               role="praktikan"
               sudahPresensi={Boolean(dataPresensi)}
               waktuPresensi={dataPresensi?.waktu}
@@ -579,11 +438,11 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   headerContainer: {
-    gap: 16,
+    gap: 14,
     marginBottom: 4,
   },
   titleBlock: {
-    gap: 8,
+    gap: 6,
   },
   screenTitle: {
     color: WARNA.text,
@@ -601,6 +460,7 @@ const styles = StyleSheet.create({
     color: WARNA.textMuted,
     fontSize: 15,
     fontWeight: '600',
+    flex: 1,
   },
   roleChip: {
     backgroundColor: WARNA.surface,
@@ -614,6 +474,45 @@ const styles = StyleSheet.create({
     color: WARNA.text,
     fontSize: 12,
     fontWeight: '700',
+  },
+  identitySwitcherBox: {
+    backgroundColor: WARNA.surface,
+    borderColor: WARNA.border,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 12,
+    gap: 8,
+  },
+  identitySwitcherLabel: {
+    color: WARNA.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  identityRow: {
+    gap: 8,
+  },
+  identityChip: {
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: WARNA.bg,
+    borderColor: WARNA.border,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  identityChipSelected: {
+    backgroundColor: WARNA.primary,
+    borderColor: WARNA.primary,
+  },
+  identityChipText: {
+    color: WARNA.text,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  identityChipTextSelected: {
+    color: WARNA.surface,
   },
   activeBanner: {
     backgroundColor: WARNA.surface,
