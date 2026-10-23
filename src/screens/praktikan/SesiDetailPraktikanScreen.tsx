@@ -11,6 +11,12 @@ import { router, useLocalSearchParams } from 'expo-router';
 import PresensiFormModal, {
   type HasilSubmitKode,
 } from '../../components/praktikan/PresensiFormModal';
+import {
+  PresensiInfoModal,
+  PresensiSuccessModal,
+  type AlasanPenolakanPresensi,
+  type DataSuksesPresensi,
+} from '../../components/praktikan/PresensiFeedbackModals';
 
 export type Role = 'asisten' | 'praktikan';
 
@@ -242,6 +248,10 @@ export default function SesiDetailPraktikanScreen() {
   const [daftarPresensi, setDaftarPresensi] =
     useState<Presensi[]>(PRESENSI_AWAL);
   const [formTerbuka, setFormTerbuka] = useState(false);
+  const [dataSuksesModal, setDataSuksesModal] =
+    useState<DataSuksesPresensi | null>(null);
+  const [alasanInfoModal, setAlasanInfoModal] =
+    useState<AlasanPenolakanPresensi | null>(null);
 
   const sesiAktif = useMemo(() => {
     const targetId = paramSesiId ?? selectedSesiId;
@@ -267,20 +277,50 @@ export default function SesiDetailPraktikanScreen() {
   };
 
   const handlePresensiSekarang = () => {
-    if (!sesiAktif || sesiAktif.status !== 'dibuka' || presensiSaya) {
+    if (!sesiAktif) {
+      return;
+    }
+    if (sesiAktif.status === 'belum_dibuka') {
+      setAlasanInfoModal('belum_dibuka');
+      return;
+    }
+    if (sesiAktif.status === 'ditutup') {
+      setAlasanInfoModal('sudah_ditutup');
+      return;
+    }
+    if (presensiSaya) {
+      setAlasanInfoModal('sudah_presensi');
       return;
     }
     setFormTerbuka(true);
   };
 
   const handleSubmitKode = (kode: string): HasilSubmitKode => {
-    if (!sesiAktif || sesiAktif.status !== 'dibuka') {
+    if (!sesiAktif) {
       setFormTerbuka(false);
       return { ok: false };
     }
 
-    if (presensiSaya) {
+    if (sesiAktif.status === 'belum_dibuka') {
       setFormTerbuka(false);
+      setAlasanInfoModal('belum_dibuka');
+      return { ok: false };
+    }
+
+    if (sesiAktif.status === 'ditutup') {
+      setFormTerbuka(false);
+      setAlasanInfoModal('sudah_ditutup');
+      return { ok: false };
+    }
+
+    // Pengecekan aturan bisnis: 1 praktikan hanya boleh 1 kali presensi per sesi
+    const sudahTercatat = daftarPresensi.some(
+      (item) =>
+        item.sesiId === sesiAktif.id && item.userId === PRAKTIKAN_AKTIF.id
+    );
+    if (sudahTercatat) {
+      setFormTerbuka(false);
+      setAlasanInfoModal('sudah_presensi');
       return { ok: false };
     }
 
@@ -291,15 +331,24 @@ export default function SesiDetailPraktikanScreen() {
       };
     }
 
+    const waktuSekarang = new Date().toISOString();
     const catatanBaru: Presensi = {
       id: `presensi-${Date.now()}`,
       sesiId: sesiAktif.id,
       userId: PRAKTIKAN_AKTIF.id,
-      waktu: new Date().toISOString(),
+      waktu: waktuSekarang,
     };
 
     setDaftarPresensi((prev) => [...prev, catatanBaru]);
     setFormTerbuka(false);
+    setDataSuksesModal({
+      namaPraktikan: PRAKTIKAN_AKTIF.nama,
+      nim: PRAKTIKAN_AKTIF.nim,
+      namaPraktikum: ambilNamaPraktikum(sesiAktif.praktikumId),
+      pertemuanKe: sesiAktif.pertemuanKe,
+      kelas: sesiAktif.kelas,
+      waktuIso: waktuSekarang,
+    });
     return { ok: true };
   };
 
@@ -498,6 +547,30 @@ export default function SesiDetailPraktikanScreen() {
             <Text style={styles.bannerTitle}>{teksBanner}</Text>
           </View>
           <Text style={styles.bannerSubTitle}>{subTeksBanner}</Text>
+
+          {(sudahPresensi ||
+            sesiAktif.status === 'belum_dibuka' ||
+            sesiAktif.status === 'ditutup') && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                sudahPresensi
+                  ? 'Coba presensi ulang atau lihat informasi status presensi'
+                  : 'Lihat informasi status presensi'
+              }
+              onPress={handlePresensiSekarang}
+              style={({ pressed }) => [
+                styles.bannerInfoButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.bannerInfoButtonText}>
+                {sudahPresensi
+                  ? 'Coba Presensi Lagi / Lihat Info'
+                  : 'Lihat Info Status Presensi'}
+              </Text>
+            </Pressable>
+          )}
         </View>
       </ScrollView>
 
@@ -558,6 +631,21 @@ export default function SesiDetailPraktikanScreen() {
         petunjukKodeDemo={sesiAktif.kodePresensi}
         onClose={() => setFormTerbuka(false)}
         onSubmitKode={handleSubmitKode}
+      />
+
+      <PresensiSuccessModal
+        visible={Boolean(dataSuksesModal)}
+        data={dataSuksesModal}
+        onClose={() => setDataSuksesModal(null)}
+      />
+
+      <PresensiInfoModal
+        visible={Boolean(alasanInfoModal)}
+        alasan={alasanInfoModal}
+        namaPraktikum={namaPraktikum}
+        pertemuanKe={sesiAktif.pertemuanKe}
+        waktuTercatatIso={presensiSaya?.waktu}
+        onClose={() => setAlasanInfoModal(null)}
       />
     </SafeAreaView>
   );
@@ -790,6 +878,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '500',
+  },
+  bannerInfoButton: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: WARNA.bg,
+    borderColor: WARNA.text,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerInfoButtonText: {
+    color: WARNA.text,
+    fontSize: 13,
+    fontWeight: '700',
   },
   bottomActionBar: {
     paddingHorizontal: 18,
