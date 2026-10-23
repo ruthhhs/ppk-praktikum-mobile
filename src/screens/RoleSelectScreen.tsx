@@ -2,195 +2,322 @@
 import { useState } from 'react';
 import { router } from 'expo-router';
 import {
-  View,
-  Text,
+  SafeAreaView,
+  ScrollView,
   StyleSheet,
-  TouchableOpacity,
+  Text,
+  View,
+  Pressable,
 } from 'react-native';
 
-type Role = 'asisten' | 'praktikan';
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
+import { colors } from '../constants/theme';
+import { dummyUsers } from '../data/dummy';
+import type { Role, User } from '../data/types';
+import { useApp } from '../hooks/useApp';
 
 export default function RoleSelectScreen() {
-  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
+  const [selectedRole, setSelectedRole] = useState<Role>('asisten');
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const { setUser } = useApp();
 
-    const handleContinue = () => {
-        if (selectedRole === 'asisten') {
-            router.replace('/asisten/jadwal');
-        } else if (selectedRole === 'praktikan') {
-            router.replace('/praktikan/jadwal');
-        }
-    };
+  const users = dummyUsers.filter(
+    (user) => user.role === selectedRole,
+  );
+
+  const handleRoleChange = (role: Role) => {
+    setSelectedRole(role);
+    setSelectedUser(null);
+  };
+
+  const handleLogin = () => {
+    if (!selectedUser) return;
+
+    setUser(selectedUser);
+
+    if (selectedUser.role === 'asisten') {
+      router.replace('/asisten/jadwal');
+    } else {
+      router.replace('/praktikan/jadwal');
+    }
+  };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.logo}>SIP!</Text>
-        <Text style={styles.subtitle}>
-          Sistem Informasi Praktikum
-        </Text>
-      </View>
+    <SafeAreaView style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.header}>
+          <Text style={styles.logo}>SIP!</Text>
 
-      <View style={styles.content}>
-        <Text style={styles.title}>Selamat Datang!</Text>
-        <Text style={styles.description}>
-          Pilih peranmu untuk melanjutkan ke aplikasi.
-        </Text>
-
-        <TouchableOpacity
-          style={[
-            styles.roleCard,
-            selectedRole === 'asisten' && styles.selectedCard,
-          ]}
-          onPress={() => setSelectedRole('asisten')}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.roleIcon}>👨‍🏫</Text>
-          <View style={styles.roleTextContainer}>
-            <Text style={styles.roleTitle}>Asisten</Text>
-            <Text style={styles.roleDescription}>
-              Kelola jadwal, sesi, dan rekap presensi praktikum.
-            </Text>
-          </View>
-          <Text style={styles.radio}>
-            {selectedRole === 'asisten' ? '🔘' : '⚪'}
+          <Text style={styles.subtitle}>
+            Sistem Informasi Praktikum
           </Text>
-        </TouchableOpacity>
+        </View>
 
-        <TouchableOpacity
-          style={[
-            styles.roleCard,
-            selectedRole === 'praktikan' && styles.selectedCard,
-          ]}
-          onPress={() => setSelectedRole('praktikan')}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.roleIcon}>🎓</Text>
-          <View style={styles.roleTextContainer}>
-            <Text style={styles.roleTitle}>Praktikan</Text>
-            <Text style={styles.roleDescription}>
-              Lihat jadwal, lakukan presensi, dan cek riwayat.
-            </Text>
-          </View>
-          <Text style={styles.radio}>
-            {selectedRole === 'praktikan' ? '🔘' : '⚪'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.content}>
+          <Text style={styles.heading}>Masuk sebagai</Text>
 
-        <TouchableOpacity
-            style={[
-                styles.continueButton,
-                !selectedRole && styles.disabledButton,
-            ]}
-            onPress={handleContinue}
-            disabled={!selectedRole}
-            activeOpacity={0.8}
+          <View style={styles.roleToggle}>
+            <Pressable
+              style={[
+                styles.roleOption,
+                selectedRole === 'asisten' && styles.activeRole,
+              ]}
+              onPress={() => handleRoleChange('asisten')}
             >
-            <Text style={styles.continueButtonText}>
-                Lanjutkan
-            </Text>
-        </TouchableOpacity>
-      </View>
+              <Text
+                style={[
+                  styles.roleText,
+                  selectedRole === 'asisten' &&
+                    styles.activeRoleText,
+                ]}
+              >
+                Asisten
+              </Text>
+            </Pressable>
 
-      <Text style={styles.footer}>
-        SIP! • Sistem Informasi Praktikum
-      </Text>
-    </View>
+            <Pressable
+              style={[
+                styles.roleOption,
+                selectedRole === 'praktikan' && styles.activeRole,
+              ]}
+              onPress={() => handleRoleChange('praktikan')}
+            >
+              <Text
+                style={[
+                  styles.roleText,
+                  selectedRole === 'praktikan' &&
+                    styles.activeRoleText,
+                ]}
+              >
+                Praktikan
+              </Text>
+            </Pressable>
+          </View>
+
+          <Text style={styles.sectionTitle}>
+            Pilih identitas
+          </Text>
+
+          <View style={styles.userList}>
+            {users.map((user) => {
+              const isSelected = selectedUser?.id === user.id;
+
+              return (
+                <Card
+                  key={user.id}
+                  onPress={() => setSelectedUser(user)}
+                  style={[
+                    styles.userCard,
+                    isSelected && styles.selectedUserCard,
+                  ]}
+                >
+                  <View style={styles.userRow}>
+                    <View style={styles.userInfo}>
+                      <Text style={styles.userName}>
+                        {user.nama}
+                      </Text>
+
+                      {user.role === 'praktikan' && user.nim && (
+                        <Text style={styles.userNim}>
+                          NIM {user.nim}
+                        </Text>
+                      )}
+                    </View>
+
+                    <View
+                      style={[
+                        styles.radio,
+                        isSelected && styles.radioSelected,
+                      ]}
+                    >
+                      {isSelected && (
+                        <View style={styles.radioInner} />
+                      )}
+                    </View>
+                  </View>
+                </Card>
+              );
+            })}
+
+            {users.length === 0 && (
+              <Text style={styles.emptyText}>
+                Belum ada identitas untuk peran ini.
+              </Text>
+            )}
+          </View>
+
+          <Button
+            title="Masuk"
+            onPress={handleLogin}
+            disabled={!selectedUser}
+            style={styles.loginButton}
+          />
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
-    paddingHorizontal: 24,
-    paddingTop: 60,
+    backgroundColor: colors.bg,
+  },
+
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingTop: 36,
     paddingBottom: 24,
   },
+
   header: {
+    flexDirection: 'column',
     alignItems: 'center',
-    marginBottom: 48,
+    justifyContent: 'center',
+    marginBottom: 36,
   },
+
   logo: {
     fontSize: 42,
     fontWeight: 'bold',
-    color: '#2563EB',
+    color: colors.primary,
   },
+
   subtitle: {
-    fontSize: 14,
-    color: '#64748B',
     marginTop: 4,
+    fontSize: 14,
+    color: colors.text,
+    textAlign: 'center',
   },
+
   content: {
     flex: 1,
+    flexDirection: 'column',
   },
-  title: {
-    fontSize: 26,
+
+  heading: {
+    fontSize: 22,
     fontWeight: 'bold',
-    color: '#0F172A',
-    marginBottom: 8,
-  },
-  description: {
-    fontSize: 15,
-    color: '#64748B',
-    lineHeight: 22,
-    marginBottom: 28,
-  },
-  roleCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 14,
-    padding: 16,
+    color: colors.text,
     marginBottom: 16,
   },
-  selectedCard: {
-    borderColor: '#2563EB',
-    backgroundColor: '#EFF6FF',
-    borderWidth: 2,
-  },
-  roleIcon: {
-    fontSize: 30,
-    marginRight: 14,
-  },
-  roleTextContainer: {
-    flex: 1,
-  },
-  roleTitle: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: '#0F172A',
-    marginBottom: 5,
-  },
-  roleDescription: {
-    fontSize: 13,
-    color: '#64748B',
-    lineHeight: 19,
-  },
-  radio: {
-    fontSize: 18,
-    marginLeft: 8,
-  },
-  continueButton: {
-    backgroundColor: '#2563EB',
-    paddingVertical: 16,
+
+  roleToggle: {
+    flexDirection: 'row',
+    padding: 4,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 24,
+  },
+
+  roleOption: {
+    flex: 1,
+    minHeight: 48,
     alignItems: 'center',
-    marginTop: 12,
+    justifyContent: 'center',
+    borderRadius: 9,
   },
-  disabledButton: {
-    backgroundColor: '#94A3B8',
+
+  activeRole: {
+    backgroundColor: colors.highlight,
   },
-  continueButtonText: {
-    color: '#FFFFFF',
+
+  roleText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+  },
+
+  activeRoleText: {
+    color: colors.text,
+  },
+
+  sectionTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 12,
   },
-  footer: {
+
+  userList: {
+    flexDirection: 'column',
+    gap: 12,
+  },
+
+  userCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+  },
+
+  selectedUserCard: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+    backgroundColor: colors.highlight,
+  },
+
+  userRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  userInfo: {
+    flex: 1,
+    flexDirection: 'column',
+    marginRight: 12,
+  },
+
+  userName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+
+  userNim: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: 4,
+  },
+
+  radio: {
+    width: 22,
+    height: 22,
+    borderWidth: 2,
+    borderColor: colors.text,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  radioSelected: {
+    borderColor: colors.primary,
+  },
+
+  radioInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.primary,
+  },
+
+  emptyText: {
+    fontSize: 14,
+    color: colors.textMuted,
     textAlign: 'center',
-    color: '#94A3B8',
-    fontSize: 12,
-    marginTop: 20,
+    padding: 16,
+  },
+
+  loginButton: {
+    marginTop: 24,
+    minHeight: 48,
   },
 });

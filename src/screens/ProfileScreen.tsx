@@ -1,80 +1,208 @@
+import { useState } from 'react';
+import {
+  Alert,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { router } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
-import { Button } from '../components/ui/Button';
-import { Card } from '../components/ui/Card';
+
+import Button  from '../components/ui/Button';
+import Card from '../components/ui/Card';
+import { colors } from '../constants/theme';
 import { useApp } from '../hooks/useApp';
 
-export default function ProfilScreen() {
+export default function ProfileScreen() {
   const { currentUser, setUser } = useApp();
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const logout = () => {
-    setUser(null);
-    router.replace('/');
+  const nama = currentUser?.nama ?? 'Pengguna';
+  const role = currentUser?.role;
+  const isPraktikan = role === 'praktikan';
+
+  const initials = nama
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((word) => word.charAt(0).toUpperCase())
+    .join('');
+
+  const roleLabel =
+    role === 'asisten' ? 'Asisten' : 'Praktikan';
+
+  const handleChangeRole = () => {
+    Alert.alert(
+      'Ganti peran?',
+      'Kamu akan kembali ke halaman pemilihan peran dan identitas.',
+      [
+        {
+          text: 'Batal',
+          style: 'cancel',
+        },
+        {
+          text: 'Ganti Peran',
+          onPress: () => {
+            setUser(null);
+            router.replace('/');
+          },
+        },
+      ],
+    );
   };
 
-  if (!currentUser) {
-    return (
-      <View style={styles.container}>
-        <Text>Belum ada pengguna yang dipilih.</Text>
-        <Button title="Pilih Role" onPress={() => router.replace('/')} />
-      </View>
+  const handleLogout = () => {
+    Alert.alert(
+      'Keluar dari aplikasi?',
+      'Kamu akan kembali ke halaman pemilihan peran dan identitas.',
+      [
+        {
+          text: 'Batal',
+          style: 'cancel',
+        },
+        {
+          text: 'Keluar',
+          style: 'destructive',
+          onPress: () => {
+            setUser(null);
+            router.replace('/');
+          },
+        },
+      ],
     );
-  }
+  };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Profil Saya</Text>
-
-      <Card>
-        <Text style={styles.label}>Nama</Text>
-        <Text style={styles.value}>{currentUser.nama}</Text>
-
-        <Text style={styles.label}>Role</Text>
-        <Text style={styles.value}>
-          {currentUser.role === 'asisten' ? 'Asisten' : 'Praktikan'}
+    <SafeAreaView style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.title}>Profil</Text>
+        <Text style={styles.subtitle}>
+          Informasi pengguna SIP!
         </Text>
 
-        {currentUser.nim && (
-          <>
-            <Text style={styles.label}>NIM</Text>
-            <Text style={styles.value}>{currentUser.nim}</Text>
-          </>
-        )}
-      </Card>
+        <Card style={styles.profileCard}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>
+              {initials || 'U'}
+            </Text>
+          </View>
 
-      <View style={styles.logout}>
-        <Button
-          title="Keluar / Ganti Role"
-          variant="danger"
-          onPress={logout}
-        />
-      </View>
-    </View>
+          <Text style={styles.name}>{nama}</Text>
+
+          <View style={styles.roleChip}>
+            <Text style={styles.roleText}>{roleLabel}</Text>
+          </View>
+
+          {isPraktikan && (
+            <View style={styles.infoBox}>
+              <Text style={styles.infoLabel}>NIM</Text>
+              <Text style={styles.infoValue}>
+                {currentUser?.nim || '-'}
+              </Text>
+            </View>
+          )}
+        </Card>
+
+        <View style={styles.actions}>
+          <Button
+            title="Ganti Peran"
+            variant="primary"
+            onPress={handleChangeRole}
+          />
+
+          <Button
+            title="Keluar"
+            variant="danger"
+            onPress={handleLogout}
+          />
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.bg,
+  },
+  scrollContent: {
+    flexGrow: 1,
     padding: 20,
-    backgroundColor: '#F8FAFC',
+    gap: 16,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
+    fontSize: 26,
+    fontWeight: '700',
+    color: colors.text,
   },
-  label: {
-    color: '#64748B',
+  subtitle: {
     fontSize: 14,
-    marginTop: 12,
+    color: colors.textMuted,
+    marginTop: -10,
   },
-  value: {
+  profileCard: {
+    alignItems: 'center',
+    padding: 24,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 20,
+    gap: 12,
+  },
+  avatar: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  name: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  roleChip: {
+    backgroundColor: colors.highlight,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+  },
+  roleText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  infoBox: {
+    width: '100%',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    marginTop: 8,
+    paddingTop: 16,
+    gap: 6,
+  },
+  infoLabel: {
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  infoValue: {
+    color: colors.text,
     fontSize: 16,
     fontWeight: '600',
-    marginTop: 4,
   },
-  logout: {
-    marginTop: 24,
+  actions: {
+    gap: 12,
+    marginTop: 8,
   },
 });
