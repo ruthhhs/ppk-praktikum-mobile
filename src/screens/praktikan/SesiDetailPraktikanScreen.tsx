@@ -8,6 +8,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import PresensiFormModal, {
+  type HasilSubmitKode,
+} from '../../components/praktikan/PresensiFormModal';
 
 export type Role = 'asisten' | 'praktikan';
 
@@ -238,6 +241,7 @@ export default function SesiDetailPraktikanScreen() {
   );
   const [daftarPresensi, setDaftarPresensi] =
     useState<Presensi[]>(PRESENSI_AWAL);
+  const [formTerbuka, setFormTerbuka] = useState(false);
 
   const sesiAktif = useMemo(() => {
     const targetId = paramSesiId ?? selectedSesiId;
@@ -262,12 +266,29 @@ export default function SesiDetailPraktikanScreen() {
     }
   };
 
-  // Pada C2, tombol Presensi Sekarang langsung mencatat kehadiran untuk menguji
-  // perubahan state "Dibuka, belum presensi" -> "Dibuka, sudah presensi".
-  // Pada C3 & C4, aksi ini akan membuka Form Presensi (kode 4 digit) dan Modal Sukses/Info.
   const handlePresensiSekarang = () => {
     if (!sesiAktif || sesiAktif.status !== 'dibuka' || presensiSaya) {
       return;
+    }
+    setFormTerbuka(true);
+  };
+
+  const handleSubmitKode = (kode: string): HasilSubmitKode => {
+    if (!sesiAktif || sesiAktif.status !== 'dibuka') {
+      setFormTerbuka(false);
+      return { ok: false };
+    }
+
+    if (presensiSaya) {
+      setFormTerbuka(false);
+      return { ok: false };
+    }
+
+    if (!sesiAktif.kodePresensi || kode !== sesiAktif.kodePresensi) {
+      return {
+        ok: false,
+        pesanErrorInput: 'Kode salah',
+      };
     }
 
     const catatanBaru: Presensi = {
@@ -278,6 +299,8 @@ export default function SesiDetailPraktikanScreen() {
     };
 
     setDaftarPresensi((prev) => [...prev, catatanBaru]);
+    setFormTerbuka(false);
+    return { ok: true };
   };
 
   if (!sesiAktif) {
@@ -525,6 +548,17 @@ export default function SesiDetailPraktikanScreen() {
           )}
         </View>
       )}
+
+      <PresensiFormModal
+        visible={formTerbuka}
+        namaPraktikum={namaPraktikum}
+        pertemuanKe={sesiAktif.pertemuanKe}
+        kelas={sesiAktif.kelas}
+        lab={sesiAktif.lab}
+        petunjukKodeDemo={sesiAktif.kodePresensi}
+        onClose={() => setFormTerbuka(false)}
+        onSubmitKode={handleSubmitKode}
+      />
     </SafeAreaView>
   );
 }
