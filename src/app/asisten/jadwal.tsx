@@ -1,11 +1,5 @@
-// import PraktikanJadwalScreen from '../../screens/praktikan/PraktikanJadwalScreen';
-
-// export default function JadwalRoute() {
-//   return <PraktikanJadwalScreen />;
-// }
-
-import TempScreen from '../../screens/TempScreen';
+import AsistenJadwalScreen from '../../screens/asisten/AsistenJadwalScreen';
 
 export default function JadwalRoute() {
-  return <TempScreen title="Jadwal Asisten" />;
+  return <AsistenJadwalScreen />;
 }
