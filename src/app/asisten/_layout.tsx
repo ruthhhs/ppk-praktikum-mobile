@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import { colors } from '../../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function AsistenLayout() {
@@ -6,8 +7,12 @@ export default function AsistenLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#2563EB',
-        tabBarInactiveTintColor: '#9CA3AF',
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
+        tabBarStyle: {
+          backgroundColor: colors.bg,
+          borderTopColor: colors.border,
+        },
       }}
     >
       <Tabs.Screen

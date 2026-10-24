@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import { colors } from '../../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function PraktikanLayout() {
@@ -6,8 +7,12 @@ export default function PraktikanLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#2563EB',
-        tabBarInactiveTintColor: '#9CA3AF',
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
+        tabBarStyle: {
+          backgroundColor: colors.bg,
+          borderTopColor: colors.border,
+        },
       }}
     >
       <Tabs.Screen
@@ -57,7 +62,8 @@ export default function PraktikanLayout() {
         options={{
           href: null,
         }}
-      />
+        />
     </Tabs>
   );
 }
+
