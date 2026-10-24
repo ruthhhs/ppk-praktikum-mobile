@@ -3,9 +3,8 @@
 // export default function ProfilRoute() {
 //   return <AsistenProfilScreen />;
 // }
+import ProfilScreen from '../../screens/ProfileScreen';
 
-import TempScreen from '../../screens/TempScreen';
-
-export default function JadwalRoute() {
-  return <TempScreen title="Profil Asisten" />;
+export default function Profil() {
+  return <ProfilScreen />;
 }
