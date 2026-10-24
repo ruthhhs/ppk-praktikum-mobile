@@ -6,6 +6,6 @@
 
 import TempScreen from '../../screens/TempScreen';
 
-export default function JadwalRoute() {
+export default function DetailSesiRoute() {
   return <TempScreen title="Detail Sesi Praktikan" />;
 }
