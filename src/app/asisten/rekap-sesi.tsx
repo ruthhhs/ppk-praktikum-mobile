@@ -1,5 +1,5 @@
-import TempScreen from '../../screens/TempScreen';
+import AsistenRekapSesiScreen from '../../screens/asisten/AsistenRekapSesiScreen';
 
 export default function JadwalRoute() {
-  return <TempScreen title="Rekap Sesi" />;
+  return <AsistenRekapSesiScreen />;
 }
