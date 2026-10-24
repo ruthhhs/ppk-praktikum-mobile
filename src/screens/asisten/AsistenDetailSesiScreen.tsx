@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -209,6 +209,16 @@ export default function AsistenDetailSesiScreen() {
   const [kodePresensi, setKodePresensi] = useState('');
   const [catatan, setCatatan] = useState('');
   const [errorKode, setErrorKode] = useState('');
+
+  useEffect(() => {
+  const sesiBaru = ambilSesiAwal(sesiId);
+  setSesi(sesiBaru);
+  setCatatan(sesiBaru.catatan ?? '');
+  setKodePresensi('');
+  setErrorKode('');
+  setFormTerbuka(false);
+  setKonfirmasi(null);
+}, [sesiId]);
 
   const persentase =
     sesi.total > 0 ? Math.round((sesi.hadir / sesi.total) * 100) : 0;
