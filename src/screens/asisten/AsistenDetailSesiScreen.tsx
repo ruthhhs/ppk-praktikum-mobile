@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useApp } from '../../hooks/useApp';
 
 type StatusSesi = 'belum_dibuka' | 'dibuka' | 'ditutup';
 type TindakanKonfirmasi = 'buka' | 'tutup' | null;
@@ -119,6 +120,11 @@ function ambilSesiAwal(id?: string | string[]) {
   return SESI_CONTOH.find((sesi) => sesi.id === sesiId) ?? SESI_CONTOH[0];
 }
 
+function ubahKeIdSesiApp(id: string) {
+  const nomor = id.match(/^sesi-(\d+)$/)?.[1];
+  return nomor ? `sesi-${nomor.padStart(3, '0')}` : id;
+}
+
 function formatTanggal(tanggal: string) {
   const [tahun, bulan, hari] = tanggal.split('-').map(Number);
   return new Date(tahun, bulan - 1, hari)
@@ -203,6 +209,7 @@ function Tombol({
 
 export default function AsistenDetailSesiScreen() {
   const { sesiId } = useLocalSearchParams<{ sesiId?: string }>();
+  const { sesi: daftarSesiApp, bukaSesi } = useApp();
 
   const [sesi, setSesi] = useState<Sesi>(() => ambilSesiAwal(sesiId));
   const [formTerbuka, setFormTerbuka] = useState(false);
@@ -234,10 +241,29 @@ export default function AsistenDetailSesiScreen() {
 
   function jalankanKonfirmasi() {
     if (konfirmasi === 'buka') {
+      const idSesiApp = ubahKeIdSesiApp(sesi.id);
+      const sesiApp = daftarSesiApp.find((item) => item.id === idSesiApp);
+
+      if (!sesiApp) {
+        setKonfirmasi(null);
+        setFormTerbuka(true);
+        setErrorKode('Data sesi tidak ditemukan.');
+        return;
+      }
+
+      if (sesiApp.status !== 'belum_dibuka') {
+        setKonfirmasi(null);
+        setFormTerbuka(true);
+        setErrorKode('Sesi ini tidak dapat dibuka dengan status saat ini.');
+        return;
+      }
+
+      bukaSesi(sesiApp.id, kodePresensi.trim());
+
       setSesi((sesiSaatIni) => ({
         ...sesiSaatIni,
         status: 'dibuka',
-        kodePresensi,
+        kodePresensi: kodePresensi.trim(),
         catatan: catatan.trim(),
       }));
     }
@@ -350,7 +376,10 @@ export default function AsistenDetailSesiScreen() {
               <Text style={styles.attendanceLabel}>Kehadiran</Text>
               <Text style={styles.attendanceCount}>
                 {sesi.hadir}
-                <Text style={styles.attendanceTotal}> dari {sesi.total} praktikan</Text>
+                <Text style={styles.attendanceTotal}>
+                  {' '}
+                  dari {sesi.total} praktikan
+                </Text>
               </Text>
             </View>
             <Text style={styles.attendancePercent}>{persentase}%</Text>
