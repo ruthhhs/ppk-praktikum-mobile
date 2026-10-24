@@ -188,7 +188,9 @@ function Tombol({
         : styles.buttonPrimary;
 
   const textStyle =
-    variant === 'outline'
+  variant === 'danger'
+    ? styles.buttonTextDanger
+    : variant === 'outline'
       ? styles.buttonTextOutline
       : styles.buttonTextPrimary;
 
@@ -877,6 +879,9 @@ const styles = StyleSheet.create({
   buttonTextOutline: {
     color: WARNA.text,
   },
+  buttonTextDanger: {
+  color: WARNA.primary,
+},
   buttonPressed: {
     opacity: 0.76,
   },
