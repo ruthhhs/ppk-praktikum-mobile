@@ -1,11 +1,5 @@
-// import PraktikanRiwayatScreen from '../../screens/praktikan/PraktikanRiwayatScreen';
-
-// export default function RiwayatRoute() {
-//   return <PraktikanRiwayatScreen />;
-// }
-
-import TempScreen from '../../screens/TempScreen';
+import RiwayatKehadiranScreen from '../../screens/praktikan/RiwayatKehadiranScreen';
 
 export default function RiwayatRoute() {
-  return <TempScreen title="Riwayat Praktikan" />;
+  return <RiwayatKehadiranScreen />;
 }

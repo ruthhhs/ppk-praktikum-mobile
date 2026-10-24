@@ -1,11 +1,5 @@
-// import PlaceholderScreen from '../../screens/PlaceholderScreen';
-
-// export default function DetailSesiRoute() {
-//   return <PlaceholderScreen title="Detail Sesi Praktikan" />;
-// }
-
-import TempScreen from '../../screens/TempScreen';
+import SesiDetailPraktikanScreen from '../../screens/praktikan/SesiDetailPraktikanScreen';
 
 export default function DetailSesiRoute() {
-  return <TempScreen title="Detail Sesi Praktikan" />;
+  return <SesiDetailPraktikanScreen/>;
 }

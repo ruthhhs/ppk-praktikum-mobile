@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useApp } from '../../hooks/useApp';
+import { globalStyles, WARNA } from '../../styles/global';
 
 type StatusSesi = 'belum_dibuka' | 'dibuka' | 'ditutup';
 type TindakanKonfirmasi = 'buka' | 'tutup' | null;
@@ -31,18 +32,6 @@ type Sesi = {
   total: number;
   kodePresensi?: string;
   catatan?: string;
-};
-
-const WARNA = {
-  bg: '#FFFFFF',
-  surface: '#FEFFE0',
-  text: '#17454A',
-  textMuted: 'rgba(23, 69, 74, 0.7)',
-  primary: '#B5185F',
-  highlight: '#D0E86E',
-  accent: '#35C1C2',
-  border: 'rgba(23, 69, 74, 0.15)',
-  scrim: 'rgba(23, 69, 74, 0.5)',
 };
 
 const SESI_CONTOH: Sesi[] = [
@@ -127,6 +116,7 @@ function ubahKeIdSesiApp(id: string) {
 
 function formatTanggal(tanggal: string) {
   const [tahun, bulan, hari] = tanggal.split('-').map(Number);
+
   return new Date(tahun, bulan - 1, hari)
     .toLocaleDateString('id-ID', {
       weekday: 'long',
@@ -182,29 +172,29 @@ function Tombol({
 }) {
   const buttonStyle =
     variant === 'outline'
-      ? styles.buttonOutline
+      ? globalStyles.buttonOutline
       : variant === 'danger'
-        ? styles.buttonDanger
-        : styles.buttonPrimary;
+        ? globalStyles.buttonDanger
+        : globalStyles.buttonPrimary;
 
   const textStyle =
-  variant === 'danger'
-    ? styles.buttonTextDanger
-    : variant === 'outline'
-      ? styles.buttonTextOutline
-      : styles.buttonTextPrimary;
+    variant === 'danger'
+      ? globalStyles.buttonTextDanger
+      : variant === 'outline'
+        ? globalStyles.buttonTextOutline
+        : globalStyles.buttonTextPrimary;
 
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
       style={({ pressed }) => [
-        styles.button,
+        globalStyles.button,
         buttonStyle,
-        pressed && styles.buttonPressed,
+        pressed && globalStyles.buttonPressed,
       ]}
     >
-      <Text style={[styles.buttonText, textStyle]}>{label}</Text>
+      <Text style={[globalStyles.buttonText, textStyle]}>{label}</Text>
     </Pressable>
   );
 }
@@ -219,6 +209,16 @@ export default function AsistenDetailSesiScreen() {
   const [kodePresensi, setKodePresensi] = useState('');
   const [catatan, setCatatan] = useState('');
   const [errorKode, setErrorKode] = useState('');
+
+  useEffect(() => {
+  const sesiBaru = ambilSesiAwal(sesiId);
+  setSesi(sesiBaru);
+  setCatatan(sesiBaru.catatan ?? '');
+  setKodePresensi('');
+  setErrorKode('');
+  setFormTerbuka(false);
+  setKonfirmasi(null);
+}, [sesiId]);
 
   const persentase =
     sesi.total > 0 ? Math.round((sesi.hadir / sesi.total) * 100) : 0;
@@ -288,10 +288,7 @@ export default function AsistenDetailSesiScreen() {
   }
 
   return (
-    <SafeAreaView
-      edges={['top', 'left', 'right']}
-      style={styles.safeArea}
-    >
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={styles.page}
         showsVerticalScrollIndicator={false}
@@ -302,7 +299,7 @@ export default function AsistenDetailSesiScreen() {
           onPress={() => router.back()}
           style={({ pressed }) => [
             styles.backButton,
-            pressed && styles.buttonPressed,
+            pressed && globalStyles.buttonPressed,
           ]}
         >
           <Text style={styles.backArrow}>‹</Text>
@@ -847,43 +844,6 @@ const styles = StyleSheet.create({
   actions: {
     gap: 10,
     marginTop: 18,
-  },
-  button: {
-    flex: 1,
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    borderRadius: 14,
-  },
-  buttonPrimary: {
-    borderColor: WARNA.primary,
-    backgroundColor: WARNA.primary,
-  },
-  buttonDanger: {
-    borderColor: WARNA.primary,
-    backgroundColor: WARNA.bg,
-  },
-  buttonOutline: {
-    borderColor: WARNA.border,
-    backgroundColor: WARNA.bg,
-  },
-  buttonText: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  buttonTextPrimary: {
-    color: WARNA.surface,
-  },
-  buttonTextOutline: {
-    color: WARNA.text,
-  },
-  buttonTextDanger: {
-  color: WARNA.primary,
-},
-  buttonPressed: {
-    opacity: 0.76,
   },
   closedNotice: {
     flexDirection: 'row',
