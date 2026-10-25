@@ -4,8 +4,6 @@ Aplikasi mobile (React Native + Expo) untuk presensi praktikum. Sprint 1 memakai
 
 README ini memandu kamu sebagai programmer dari **clone repo sampai punya APK sendiri di HP** lewat **EAS Build** (tanpa Expo Go).
 
-Untuk Asisten Praktikum --> [11. Untuk asisten praktikum: unduh dan pasang aplikasi](#11-untuk-asisten-praktikum-unduh-dan-pasang-aplikasi)
-
 ---
 
 ## 0. Yang perlu disiapkan
@@ -277,11 +275,3 @@ eas build --platform android --profile preview       # APK demo
 ```
 
 Pertanyaan atau kendala: tanyakan di grup tim atau langsung ke PM.
-
----
- 
-## 11. Untuk asisten praktikum: unduh dan pasang aplikasi
- 
-Bagian ini untuk asisten yang akan memeriksa aplikasi SIP!. Kakak tidak perlu punya akun Expo (kelompok kami mengunakan akun organisasi), cukup unduh aplikasi SIP!-sprint1 versi preview (*standalone*).
- 
-**LINK DRIVE:** [SIP!-preview](https://drive.google.com/drive/folders/1Y6ahC6njRRVQ71IRm9ztK6O6rYDmwByb?usp=drive_link)
