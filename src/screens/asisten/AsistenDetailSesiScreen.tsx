@@ -201,7 +201,7 @@ function Tombol({
 
 export default function AsistenDetailSesiScreen() {
   const { sesiId } = useLocalSearchParams<{ sesiId?: string }>();
-  const { sesi: daftarSesiApp, bukaSesi } = useApp();
+  const { sesi: daftarSesiApp, bukaSesi, tutupSesi } = useApp();
 
   const [sesi, setSesi] = useState<Sesi>(() => ambilSesiAwal(sesiId));
   const [formTerbuka, setFormTerbuka] = useState(false);
@@ -271,11 +271,21 @@ export default function AsistenDetailSesiScreen() {
     }
 
     if (konfirmasi === 'tutup') {
-      setSesi((sesiSaatIni) => ({
-        ...sesiSaatIni,
-        status: 'ditutup',
-      }));
-    }
+  const idSesiApp = ubahKeIdSesiApp(sesi.id);
+  const sesiApp = daftarSesiApp.find((item) => item.id === idSesiApp);
+
+  if (!sesiApp || sesiApp.status !== 'dibuka') {
+    setKonfirmasi(null);
+    return;
+  }
+
+  tutupSesi(sesiApp.id);
+
+  setSesi((sesiSaatIni) => ({
+    ...sesiSaatIni,
+    status: 'ditutup',
+  }));
+}
 
     setKonfirmasi(null);
   }
