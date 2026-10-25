@@ -1,5 +1,5 @@
 import AsistenRekapSesiScreen from '../../screens/asisten/AsistenRekapSesiScreen';
 
-export default function JadwalRoute() {
+export default function RekapSesi() {
   return <AsistenRekapSesiScreen />;
 }
