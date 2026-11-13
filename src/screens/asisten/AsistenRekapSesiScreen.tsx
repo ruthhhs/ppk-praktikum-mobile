@@ -1,16 +1,20 @@
-import { useMemo, useState } from 'react';
+import { router, useLocalSearchParams } from "expo-router";
+import { useMemo, useState } from "react";
 import {
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { dummyUsers } from "../../data/dummy";
+import type { SesiStatus } from "../../data/types";
+import { useApp } from "../../hooks/useApp";
+import { useAsistenWorkflowStore } from "./AsistenWorkflowStore";
 
-type StatusSesi = 'dibuka' | 'ditutup';
+type StatusSesi = SesiStatus;
 
 type PraktikanHadir = {
   id: string;
@@ -20,61 +24,56 @@ type PraktikanHadir = {
 };
 
 const WARNA = {
-  bg: '#FFFFFF',
-  surface: '#FEFFE0',
-  text: '#17454A',
-  textMuted: 'rgba(23, 69, 74, 0.7)',
-  primary: '#B5185F',
-  highlight: '#D0E86E',
-  border: 'rgba(23, 69, 74, 0.15)',
-  scrim: 'rgba(23, 69, 74, 0.5)',
+  bg: "#FFFFFF",
+  surface: "#FEFFE0",
+  text: "#17454A",
+  textMuted: "rgba(23, 69, 74, 0.7)",
+  primary: "#B5185F",
+  highlight: "#D0E86E",
+  border: "rgba(23, 69, 74, 0.15)",
+  scrim: "rgba(23, 69, 74, 0.5)",
 };
-
-const DATA_SESI = {
-  id: 'sesi-01',
-  praktikum: 'Basis Data',
-  pertemuanKe: 3,
-  kelas: 'A',
-  tanggal: '2026-10-23',
-  status: 'dibuka' as StatusSesi,
-  total: 30,
-};
-
-const DAFTAR_HADIR: PraktikanHadir[] = [
-  { id: 'p-01', nama: 'Siti Aisyah', nim: '2210512001', waktu: '08:03:12' },
-  { id: 'p-02', nama: 'Budi Santoso', nim: '2210512002', waktu: '08:05:40' },
-  { id: 'p-03', nama: 'Rina Puspita', nim: '2210512003', waktu: '08:07:18' },
-  { id: 'p-04', nama: 'Dimas Pratama', nim: '2210512004', waktu: '08:08:51' },
-  { id: 'p-05', nama: 'Nadia Putri', nim: '2210512005', waktu: '08:11:06' },
-  { id: 'p-06', nama: 'Rafi Maulana', nim: '2210512006', waktu: '08:13:22' },
-  { id: 'p-07', nama: 'Ayu Lestari', nim: '2210512007', waktu: '08:14:37' },
-  { id: 'p-08', nama: 'Fajar Ramadhan', nim: '2210512008', waktu: '08:16:09' },
-  { id: 'p-09', nama: 'Intan Permata', nim: '2210512009', waktu: '08:18:44' },
-  { id: 'p-10', nama: 'Rizky Ananda', nim: '2210512010', waktu: '08:21:13' },
-  { id: 'p-11', nama: 'Maya Safitri', nim: '2210512011', waktu: '08:24:05' },
-  { id: 'p-12', nama: 'Dewi Anggraini', nim: '2210512012', waktu: '08:27:31' },
-];
 
 function formatTanggal(tanggal: string) {
-  const [tahun, bulan, hari] = tanggal.split('-').map(Number);
+  const [tahun, bulan, hari] = tanggal.split("-").map(Number);
 
   return new Date(tahun, bulan - 1, hari)
-    .toLocaleDateString('id-ID', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
+    .toLocaleDateString("id-ID", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
     })
-    .replace('.', '');
+    .replace(".", "");
 }
 
 function StatusBadge({ status }: { status: StatusSesi }) {
-  const isOpen = status === 'dibuka';
+  const isOpen = status === "dibuka";
+  const label =
+    status === "dibuka"
+      ? "Dibuka"
+      : status === "ditutup"
+        ? "Ditutup"
+        : "Belum dibuka";
 
   return (
-    <View style={[styles.statusBadge, isOpen ? styles.statusOpen : styles.statusClosed]}>
+    <View
+      style={[
+        styles.statusBadge,
+        isOpen
+          ? styles.statusOpen
+          : status === "ditutup"
+            ? styles.statusClosed
+            : styles.statusPending,
+      ]}
+    >
       {isOpen && <View style={styles.statusDot} />}
-      <Text style={[styles.statusText, !isOpen && styles.statusTextClosed]}>
-        {isOpen ? 'Dibuka' : 'Ditutup'}
+      <Text
+        style={[
+          styles.statusText,
+          status === "ditutup" && styles.statusTextClosed,
+        ]}
+      >
+        {label}
       </Text>
     </View>
   );
@@ -82,22 +81,22 @@ function StatusBadge({ status }: { status: StatusSesi }) {
 
 function Tombol({
   label,
-  variant = 'primary',
+  variant = "primary",
   onPress,
 }: {
   label: string;
-  variant?: 'primary' | 'outline' | 'danger';
+  variant?: "primary" | "outline" | "danger";
   onPress: () => void;
 }) {
   const buttonStyle =
-    variant === 'outline'
+    variant === "outline"
       ? styles.buttonOutline
-      : variant === 'danger'
+      : variant === "danger"
         ? styles.buttonDanger
         : styles.buttonPrimary;
 
   const textStyle =
-    variant === 'outline' || variant === 'danger'
+    variant === "outline" || variant === "danger"
       ? styles.buttonTextDark
       : styles.buttonTextLight;
 
@@ -119,36 +118,70 @@ function Tombol({
 export default function AsistenRekapSesiScreen() {
   const { sesiId } = useLocalSearchParams<{ sesiId?: string }>();
   const activeSessionId = Array.isArray(sesiId) ? sesiId[0] : sesiId;
-  const sesi = {
-    ...DATA_SESI,
-    id: activeSessionId ?? DATA_SESI.id,
+  const { sesi, tutup } = useAsistenWorkflowStore();
+  const { presensi } = useApp();
+  const currentSession =
+    sesi.find((item) => item.id === activeSessionId) ?? sesi[0];
+  const session = currentSession ?? {
+    id: "",
+    praktikum: "Praktikum",
+    pertemuanKe: 0,
+    kelas: "-",
+    lab: "-",
+    tanggal: "2026-01-01",
+    jamMulai: "--:--",
+    jamSelesai: "--:--",
+    status: "belum_dibuka" as StatusSesi,
+    hadir: 0,
+    total: 0,
   };
-
-  const [status, setStatus] = useState<StatusSesi>(sesi.status);
   const [modalTutupTerbuka, setModalTutupTerbuka] = useState(false);
+  const [feedback, setFeedback] = useState("");
 
   const daftarTerurut = useMemo(
-    () => [...DAFTAR_HADIR].sort((a, b) => a.waktu.localeCompare(b.waktu)),
-    [],
+    () =>
+      presensi
+        .filter((entry) => entry.sesiId === session.id)
+        .map((entry): PraktikanHadir => {
+          const user = dummyUsers.find((item) => item.id === entry.praktikanId);
+          return {
+            id: entry.id,
+            nama: user?.nama ?? "Praktikan",
+            nim: user?.nim ?? "NIM tidak tersedia",
+            waktu: new Date(entry.waktuHadir).toLocaleTimeString("id-ID", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+              hour12: false,
+              timeZone: "Asia/Jakarta",
+            }),
+          };
+        })
+        .sort((a, b) => a.waktu.localeCompare(b.waktu)),
+    [presensi, session.id],
   );
 
   const jumlahHadir = daftarTerurut.length;
   const persentase =
-    sesi.total > 0 ? Math.round((jumlahHadir / sesi.total) * 100) : 0;
+    session.total > 0 ? Math.round((jumlahHadir / session.total) * 100) : 0;
 
   function tutupSesi() {
-    setStatus('ditutup');
+    const result = tutup(session.id);
+    setFeedback(result.message);
     setModalTutupTerbuka(false);
   }
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
       <View style={styles.page}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Kembali"
           onPress={() => router.back()}
-          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+          style={({ pressed }) => [
+            styles.backButton,
+            pressed && styles.pressed,
+          ]}
         >
           <Text style={styles.backArrow}>‹</Text>
           <Text style={styles.backLabel}>Kembali</Text>
@@ -161,13 +194,13 @@ export default function AsistenRekapSesiScreen() {
 
         <View style={styles.sessionHeader}>
           <View style={styles.sessionHeaderText}>
-            <Text style={styles.courseName}>{sesi.praktikum}</Text>
+            <Text style={styles.courseName}>{session.praktikum}</Text>
             <Text style={styles.sessionMeta}>
-              Pertemuan {sesi.pertemuanKe} · Kelas {sesi.kelas} ·{' '}
-              {formatTanggal(sesi.tanggal)}
+              Pertemuan {session.pertemuanKe} · Kelas {session.kelas} ·{" "}
+              {formatTanggal(session.tanggal)}
             </Text>
           </View>
-          <StatusBadge status={status} />
+          <StatusBadge status={session.status} />
         </View>
 
         <View style={styles.summaryCard}>
@@ -176,7 +209,7 @@ export default function AsistenRekapSesiScreen() {
               <Text style={styles.summaryEyebrow}>TOTAL KEHADIRAN</Text>
               <Text style={styles.summaryCount}>
                 {jumlahHadir}
-                <Text style={styles.summaryTotal}> / {sesi.total}</Text>
+                <Text style={styles.summaryTotal}> / {session.total}</Text>
               </Text>
               <Text style={styles.summaryCaption}>praktikan hadir</Text>
             </View>
@@ -203,9 +236,7 @@ export default function AsistenRekapSesiScreen() {
               Diurutkan berdasarkan waktu presensi
             </Text>
           </View>
-          <Text style={styles.listCount}>
-            {jumlahHadir} hadir
-          </Text>
+          <Text style={styles.listCount}>{jumlahHadir} hadir</Text>
         </View>
 
         <ScrollView
@@ -227,16 +258,16 @@ export default function AsistenRekapSesiScreen() {
             daftarTerurut.map((praktikan, index) => (
               <View key={praktikan.id} style={styles.attendeeRow}>
                 <Text style={styles.attendeeNumber}>
-                  {String(index + 1).padStart(2, '0')}
+                  {String(index + 1).padStart(2, "0")}
                 </Text>
 
                 <View style={styles.avatar}>
                   <Text style={styles.avatarText}>
                     {praktikan.nama
-                      .split(' ')
+                      .split(" ")
                       .slice(0, 2)
                       .map((bagian) => bagian[0])
-                      .join('')
+                      .join("")
                       .toUpperCase()}
                   </Text>
                 </View>
@@ -254,7 +285,12 @@ export default function AsistenRekapSesiScreen() {
           )}
         </ScrollView>
 
-        {status === 'dibuka' ? (
+        {feedback ? (
+          <Text accessibilityRole="alert" style={styles.feedback}>
+            {feedback}
+          </Text>
+        ) : null}
+        {session.status === "dibuka" ? (
           <View style={styles.bottomAction}>
             <Tombol
               label="Tutup Sesi"
@@ -265,9 +301,15 @@ export default function AsistenRekapSesiScreen() {
         ) : (
           <View style={styles.closedBanner}>
             <View style={styles.closedCheck}>
-              <Text style={styles.closedCheckText}>✓</Text>
+              <Text style={styles.closedCheckText}>
+                {session.status === "ditutup" ? "✓" : "·"}
+              </Text>
             </View>
-            <Text style={styles.closedText}>Sesi telah ditutup</Text>
+            <Text style={styles.closedText}>
+              {session.status === "ditutup"
+                ? "Sesi telah ditutup"
+                : "Sesi belum dibuka"}
+            </Text>
           </View>
         )}
       </View>
@@ -301,11 +343,7 @@ export default function AsistenRekapSesiScreen() {
                 variant="outline"
                 onPress={() => setModalTutupTerbuka(false)}
               />
-              <Tombol
-                label="Tutup Sesi"
-                variant="danger"
-                onPress={tutupSesi}
-              />
+              <Tombol label="Tutup Sesi" variant="danger" onPress={tutupSesi} />
             </View>
           </View>
         </View>
@@ -325,9 +363,9 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   backButton: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
     gap: 7,
     paddingVertical: 8,
     paddingRight: 12,
@@ -341,7 +379,7 @@ const styles = StyleSheet.create({
   backLabel: {
     color: WARNA.text,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   heading: {
     marginTop: 14,
@@ -350,7 +388,7 @@ const styles = StyleSheet.create({
   eyebrow: {
     color: WARNA.primary,
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 1,
     marginBottom: 5,
   },
@@ -358,13 +396,13 @@ const styles = StyleSheet.create({
     color: WARNA.text,
     fontSize: 27,
     lineHeight: 33,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: -0.6,
   },
   sessionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 10,
     padding: 15,
     borderWidth: 1,
@@ -378,7 +416,7 @@ const styles = StyleSheet.create({
   courseName: {
     color: WARNA.text,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   sessionMeta: {
     color: WARNA.textMuted,
@@ -388,8 +426,8 @@ const styles = StyleSheet.create({
   },
   statusBadge: {
     minHeight: 27,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
     paddingHorizontal: 10,
     borderWidth: 1,
@@ -403,6 +441,10 @@ const styles = StyleSheet.create({
     backgroundColor: WARNA.primary,
     borderColor: WARNA.primary,
   },
+  statusPending: {
+    backgroundColor: WARNA.bg,
+    borderColor: WARNA.border,
+  },
   statusDot: {
     width: 6,
     height: 6,
@@ -412,7 +454,7 @@ const styles = StyleSheet.create({
   statusText: {
     color: WARNA.text,
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   statusTextClosed: {
     color: WARNA.surface,
@@ -424,39 +466,39 @@ const styles = StyleSheet.create({
     backgroundColor: WARNA.text,
   },
   summaryTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 16,
   },
   summaryEyebrow: {
-    color: 'rgba(254, 255, 224, 0.75)',
+    color: "rgba(254, 255, 224, 0.75)",
     fontSize: 9,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 0.9,
   },
   summaryCount: {
     color: WARNA.surface,
     fontSize: 31,
     lineHeight: 37,
-    fontWeight: '800',
+    fontWeight: "800",
     marginTop: 5,
   },
   summaryTotal: {
-    color: 'rgba(254, 255, 224, 0.72)',
+    color: "rgba(254, 255, 224, 0.72)",
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   summaryCaption: {
-    color: 'rgba(254, 255, 224, 0.75)',
+    color: "rgba(254, 255, 224, 0.75)",
     fontSize: 11,
     marginTop: 1,
   },
   percentCircle: {
     width: 60,
     height: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 2,
     borderColor: WARNA.highlight,
     borderRadius: 30,
@@ -464,23 +506,23 @@ const styles = StyleSheet.create({
   percentValue: {
     color: WARNA.highlight,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   progressTrack: {
     height: 7,
-    overflow: 'hidden',
+    overflow: "hidden",
     borderRadius: 99,
-    backgroundColor: 'rgba(254, 255, 224, 0.2)',
+    backgroundColor: "rgba(254, 255, 224, 0.2)",
   },
   progressFill: {
-    height: '100%',
+    height: "100%",
     borderRadius: 99,
     backgroundColor: WARNA.highlight,
   },
   listHeading: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
     gap: 8,
     marginTop: 22,
     marginBottom: 11,
@@ -488,7 +530,7 @@ const styles = StyleSheet.create({
   listTitle: {
     color: WARNA.text,
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   listSubtitle: {
     color: WARNA.textMuted,
@@ -498,7 +540,15 @@ const styles = StyleSheet.create({
   listCount: {
     color: WARNA.primary,
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
+  },
+  feedback: {
+    color: WARNA.text,
+    backgroundColor: WARNA.highlight,
+    borderRadius: 10,
+    padding: 10,
+    fontSize: 12,
+    marginBottom: 8,
   },
   list: {
     flex: 1,
@@ -508,8 +558,8 @@ const styles = StyleSheet.create({
   },
   attendeeRow: {
     minHeight: 68,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
     paddingHorizontal: 11,
     paddingVertical: 10,
@@ -523,20 +573,20 @@ const styles = StyleSheet.create({
     width: 21,
     color: WARNA.textMuted,
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   avatar: {
     width: 36,
     height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: 18,
     backgroundColor: WARNA.highlight,
   },
   avatarText: {
     color: WARNA.text,
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   attendeeInfo: {
     flex: 1,
@@ -545,7 +595,7 @@ const styles = StyleSheet.create({
   attendeeName: {
     color: WARNA.text,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   attendeeNim: {
     color: WARNA.textMuted,
@@ -561,11 +611,11 @@ const styles = StyleSheet.create({
   timeText: {
     color: WARNA.text,
     fontSize: 10,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
+    fontWeight: "700",
+    fontVariant: ["tabular-nums"],
   },
   emptyState: {
-    alignItems: 'center',
+    alignItems: "center",
     padding: 28,
     borderWidth: 1,
     borderColor: WARNA.border,
@@ -575,8 +625,8 @@ const styles = StyleSheet.create({
   emptyIcon: {
     width: 42,
     height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: 21,
     backgroundColor: WARNA.highlight,
     marginBottom: 10,
@@ -584,17 +634,17 @@ const styles = StyleSheet.create({
   emptyIconText: {
     color: WARNA.text,
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   emptyTitle: {
     color: WARNA.text,
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   emptyDescription: {
     color: WARNA.textMuted,
     fontSize: 11,
-    textAlign: 'center',
+    textAlign: "center",
     marginTop: 4,
   },
   bottomAction: {
@@ -603,8 +653,8 @@ const styles = StyleSheet.create({
     backgroundColor: WARNA.bg,
   },
   closedBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
     padding: 13,
     marginTop: 10,
@@ -617,26 +667,26 @@ const styles = StyleSheet.create({
   closedCheck: {
     width: 28,
     height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: 14,
     backgroundColor: WARNA.highlight,
   },
   closedCheckText: {
     color: WARNA.text,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   closedText: {
     color: WARNA.text,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   button: {
     minHeight: 48,
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 12,
     borderWidth: 1,
     borderRadius: 13,
@@ -655,7 +705,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   buttonTextLight: {
     color: WARNA.surface,
@@ -668,13 +718,13 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     padding: 22,
     backgroundColor: WARNA.scrim,
   },
   modalCard: {
-    width: '100%',
+    width: "100%",
     maxWidth: 380,
     padding: 20,
     borderWidth: 1,
@@ -685,21 +735,21 @@ const styles = StyleSheet.create({
   modalIcon: {
     width: 40,
     height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: 20,
-    backgroundColor: 'rgba(181, 24, 95, 0.1)',
+    backgroundColor: "rgba(181, 24, 95, 0.1)",
     marginBottom: 13,
   },
   modalIconText: {
     color: WARNA.primary,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   modalTitle: {
     color: WARNA.text,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   modalDescription: {
     color: WARNA.textMuted,
@@ -708,7 +758,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   modalActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 10,
     marginTop: 19,
   },

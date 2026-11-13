@@ -9,23 +9,14 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  useAsistenWorkflowStore,
+  type SesiAsisten,
+} from "./AsistenWorkflowStore";
 
-type StatusSesi = "dibuka" | "belum_dibuka" | "ditutup";
+type StatusSesi = SesiAsisten["status"];
 type FilterSesi = "semua" | StatusSesi;
-
-type Sesi = {
-  id: string;
-  praktikum: string;
-  pertemuanKe: number;
-  kelas: string;
-  lab: string;
-  tanggal: string;
-  jamMulai: string;
-  jamSelesai: string;
-  status: StatusSesi;
-  hadir: number;
-  total: number;
-};
+type Sesi = SesiAsisten;
 
 const WARNA = {
   bg: "#FFFFFF",
@@ -38,76 +29,6 @@ const WARNA = {
   border: "rgba(23, 69, 74, 0.15)",
   soft: "#F5F8F6",
 };
-
-// Data sementara untuk UI B1. Ganti dengan data dari AppContext
-// setelah types.ts, dummy.ts, dan AppContext.tsx dari Dev A tersedia.
-const SESI_CONTOH: Sesi[] = [
-  {
-    id: "sesi-01",
-    praktikum: "Basis Data",
-    pertemuanKe: 3,
-    kelas: "A",
-    lab: "Lab Komputer 2",
-    tanggal: "2026-10-23",
-    jamMulai: "08:00",
-    jamSelesai: "10:00",
-    status: "dibuka",
-    hadir: 12,
-    total: 30,
-  },
-  {
-    id: "sesi-02",
-    praktikum: "Pemrograman Web",
-    pertemuanKe: 2,
-    kelas: "B",
-    lab: "Lab Komputer 1",
-    tanggal: "2026-10-24",
-    jamMulai: "10:00",
-    jamSelesai: "12:00",
-    status: "belum_dibuka",
-    hadir: 0,
-    total: 28,
-  },
-  {
-    id: "sesi-03",
-    praktikum: "Jaringan Komputer",
-    pertemuanKe: 4,
-    kelas: "A",
-    lab: "Lab Jaringan",
-    tanggal: "2026-10-25",
-    jamMulai: "13:00",
-    jamSelesai: "15:00",
-    status: "belum_dibuka",
-    hadir: 0,
-    total: 26,
-  },
-  {
-    id: "sesi-04",
-    praktikum: "Basis Data",
-    pertemuanKe: 2,
-    kelas: "A",
-    lab: "Lab Komputer 2",
-    tanggal: "2026-10-20",
-    jamMulai: "08:00",
-    jamSelesai: "10:00",
-    status: "ditutup",
-    hadir: 26,
-    total: 30,
-  },
-  {
-    id: "sesi-05",
-    praktikum: "Pemrograman Web",
-    pertemuanKe: 1,
-    kelas: "B",
-    lab: "Lab Komputer 1",
-    tanggal: "2026-10-18",
-    jamMulai: "10:00",
-    jamSelesai: "12:00",
-    status: "ditutup",
-    hadir: 24,
-    total: 28,
-  },
-];
 
 const LABEL_STATUS: Record<StatusSesi, string> = {
   belum_dibuka: "Belum dibuka",
@@ -255,22 +176,21 @@ function SessionCard({ sesi }: { sesi: Sesi }) {
 
 export default function AsistenJadwalScreen() {
   const [filter, setFilter] = useState<FilterSesi>("semua");
+  const { sesi, pengajuan } = useAsistenWorkflowStore();
 
   const sesiTerfilter = useMemo(() => {
-    return SESI_CONTOH.filter(
-      (sesi) => filter === "semua" || sesi.status === filter,
-    ).sort((a, b) => {
-      if (a.status === "dibuka" && b.status !== "dibuka") return -1;
-      if (a.status !== "dibuka" && b.status === "dibuka") return 1;
-      return a.tanggal.localeCompare(b.tanggal);
-    });
-  }, [filter]);
+    return sesi
+      .filter((sesi) => filter === "semua" || sesi.status === filter)
+      .sort((a, b) => {
+        if (a.status === "dibuka" && b.status !== "dibuka") return -1;
+        if (a.status !== "dibuka" && b.status === "dibuka") return 1;
+        return a.tanggal.localeCompare(b.tanggal);
+      });
+  }, [filter, sesi]);
 
-  const jumlahDibuka = SESI_CONTOH.filter(
-    (sesi) => sesi.status === "dibuka",
-  ).length;
+  const jumlahDibuka = sesi.filter((sesi) => sesi.status === "dibuka").length;
 
-  const jumlahBelumDibuka = SESI_CONTOH.filter(
+  const jumlahBelumDibuka = sesi.filter(
     (sesi) => sesi.status === "belum_dibuka",
   ).length;
 
@@ -293,28 +213,57 @@ export default function AsistenJadwalScreen() {
         <Text style={styles.screenSubtitle}>
           Pantau sesi dan kehadiran praktikan.
         </Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Kelola data praktikum, kelas, peserta, dan jadwal"
-          onPress={() => router.push("/asisten/data")}
-          style={({ pressed }) => [
-            styles.manageDataButton,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Text style={styles.manageDataButtonText}>Kelola data asisten ›</Text>
-        </Pressable>
+        <View style={styles.managementActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Kelola data praktikum, kelas, peserta, dan jadwal"
+            onPress={() => router.push("/asisten/data")}
+            style={({ pressed }) => [
+              styles.manageDataButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.manageDataButtonText}>Kelola data</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push("/asisten/kelola-sesi")}
+            style={({ pressed }) => [
+              styles.manageDataButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.manageDataButtonText}>Sesi</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Tinjau ${pengajuan.filter((item) => item.status === "menunggu").length} pengajuan izin menunggu`}
+            onPress={() => router.push("/asisten/izin")}
+            style={({ pressed }) => [
+              styles.manageDataButton,
+              styles.reviewButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text
+              style={[styles.manageDataButtonText, styles.reviewButtonText]}
+            >
+              Izin ·{" "}
+              {pengajuan.filter((item) => item.status === "menunggu").length}
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.summaryCard}>
         <View style={styles.summaryHeading}>
           <Text style={styles.summaryEyebrow}>RINGKASAN JADWAL</Text>
-          <Text style={styles.summaryPeriod}>Sprint 1</Text>
+          <Text style={styles.summaryPeriod}>Sprint 2</Text>
         </View>
 
         <View style={styles.summaryStats}>
           <View style={styles.summaryStat}>
-            <Text style={styles.summaryNumber}>{SESI_CONTOH.length}</Text>
+            <Text style={styles.summaryNumber}>{sesi.length}</Text>
             <Text style={styles.summaryLabel}>Total sesi</Text>
           </View>
 
@@ -464,6 +413,18 @@ const styles = StyleSheet.create({
     marginTop: 12,
     borderRadius: 11,
     backgroundColor: WARNA.primary,
+  },
+  managementActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 12,
+  },
+  reviewButton: {
+    backgroundColor: WARNA.highlight,
+  },
+  reviewButtonText: {
+    color: WARNA.text,
   },
   manageDataButtonText: {
     color: WARNA.bg,
