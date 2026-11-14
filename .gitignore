@@ -35,6 +35,8 @@ yarn-error.*
 .env*.local
 !.env.example
 
+google-services.json
+
 # typescript
 *.tsbuildinfo
 
