@@ -5,7 +5,7 @@ export default function Index() {
   const { user, role } = useAuth();
 
   if (!user) return <Redirect href="/login" />;
-  if (role === 'asisten') return <Redirect href="/asisten" />;
-  if (role === 'praktikan') return <Redirect href="/praktikan" />;
+  if (role === 'asisten') return <Redirect href="/asisten/jadwal" />;
+  if (role === 'praktikan') return <Redirect href="/praktikan/jadwal" />;
   return <Redirect href="/akun-bermasalah" />;
 }

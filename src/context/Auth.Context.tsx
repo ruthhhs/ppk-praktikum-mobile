@@ -1,12 +1,12 @@
-import type { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import type { User as FirebaseUser } from '@react-native-firebase/auth';
 import { onAuthStateChanged } from '@react-native-firebase/auth';
-import { doc, onSnapshot } from '@react-native-firebase/firestore';
 import React, { createContext, useEffect, useMemo, useState } from 'react';
 import type { Role, UserProfile } from '@/data/types';
-import { auth, db } from '@/services/firebase';
+import { auth } from '@/services/firebase';
+import { firestoreRefs, listenDocument } from '@/services/firebase/firestore';
 
 type AuthState = {
-  user: FirebaseAuthTypes.User | null;
+  user: FirebaseUser | null;
   profile: UserProfile | null;
   role: Role | null;
   loading: boolean;
@@ -18,69 +18,76 @@ export const AuthContext = createContext<AuthState | null>(null);
 const PROFILE_TIMEOUT_MS = 8000;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<FirebaseAuthTypes.User | null>(null);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
 
-  // 1) Status login
-  useEffect(() => {
-    return onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      if (!u) {
-        setProfile(null);
-        setProfileError(null);
-        setLoading(false);
-      } else {
-        setLoading(true);
-      }
-    });
-  }, []);
+  useEffect(() => onAuthStateChanged(auth, (nextUser) => {
+    setUser(nextUser);
+    if (!nextUser) {
+      setProfile(null);
+      setProfileError(null);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+  }), []);
 
-  // 2) Profil real-time (perubahan role oleh PM langsung terbaca)
   useEffect(() => {
-    if (!user) return;
-    let received = false;
+    if (!user) return undefined;
 
-    const timer = setTimeout(() => {
-      if (!received) {
-        setProfileError('Profil akun tidak ditemukan. Hubungi PM.');
+    let receivedProfile = false;
+    setProfile(null);
+    setProfileError(null);
+    setLoading(true);
+
+    const timeout = setTimeout(() => {
+      if (!receivedProfile) {
+        setProfileError('Profil akun tidak ditemukan. Hubungi pengelola aplikasi.');
         setLoading(false);
       }
     }, PROFILE_TIMEOUT_MS);
 
-    const unsub = onSnapshot(
-      doc(db, 'users', user.uid),
-      (snap) => {
-        if (snap.exists()) {
-          received = true;
-          clearTimeout(timer);
-          setProfile(snap.data() as UserProfile);
-          setProfileError(null);
+    const unsubscribe = listenDocument(
+      firestoreRefs.user(user.uid),
+      (userProfile) => {
+        if (!userProfile) {
+          receivedProfile = true;
+          clearTimeout(timeout);
+          setProfile(null);
+          setProfileError('Profil akun tidak ditemukan. Hubungi pengelola aplikasi.');
           setLoading(false);
+          return;
         }
-        // Belum ada dokumen: tunggu, mungkin registrasi masih menulis profil.
+        receivedProfile = true;
+        clearTimeout(timeout);
+        setProfile(userProfile);
+        setProfileError(null);
+        setLoading(false);
       },
       () => {
-        received = true;
-        clearTimeout(timer);
+        receivedProfile = true;
+        clearTimeout(timeout);
         setProfileError('Gagal memuat profil akun.');
         setLoading(false);
       },
     );
 
     return () => {
-      clearTimeout(timer);
-      unsub();
+      clearTimeout(timeout);
+      unsubscribe();
     };
-  }, [user?.uid]);
+  }, [user]);
 
   const value = useMemo<AuthState>(() => {
-    const valid = profile?.role === 'asisten' || profile?.role === 'praktikan';
+    const role = profile?.role;
+    const hasValidRole = role === 'asisten' || role === 'praktikan';
+
     return {
       user,
-      profile: valid ? profile : null,
-      role: valid ? profile!.role : null,
+      profile: hasValidRole ? profile : null,
+      role: hasValidRole ? role : null,
       loading,
       profileError,
     };
