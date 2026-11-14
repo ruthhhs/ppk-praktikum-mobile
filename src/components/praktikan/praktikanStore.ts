@@ -12,6 +12,7 @@ import {
 import { dummyPresensi, dummySesi, dummyUsers } from '../../data/dummy';
 import type { Praktikum, Role, SesiStatus, User } from '../../data/types';
 import { useApp } from '../../hooks/useApp';
+import { klasifikasikanAlasanIzin } from '../../services/ai';
 import { auth, db, isFirebaseConfigured } from '../../services/firebase';
 
 export type { Praktikum, Role, SesiStatus, User };
@@ -30,6 +31,28 @@ export type PengajuanIzinRingkas = {
   reviewedBy?: string;
   reviewedAt?: string;
 };
+
+export type AlasanGagalIzin =
+  | 'belum_login'
+  | 'sesi_tidak_ditemukan'
+  | 'sesi_ditutup'
+  | 'sudah_presensi'
+  | 'sudah_mengajukan'
+  | 'alasan_kosong'
+  | 'alasan_panjang'
+  | 'gagal_jaringan';
+
+export type HasilPengajuanIzin =
+  | {
+      ok: true;
+      pengajuan: PengajuanIzinRingkas;
+      pesanKlasifikasi?: string;
+    }
+  | {
+      ok: false;
+      reason: AlasanGagalIzin;
+      pesan: string;
+    };
 
 export type Sesi = {
   id: string;
@@ -95,6 +118,12 @@ export const LABEL_STATUS: Record<SesiStatus, string> = {
   belum_dibuka: 'Belum dibuka',
   dibuka: 'Dibuka',
   ditutup: 'Ditutup',
+};
+
+export const LABEL_STATUS_IZIN: Record<StatusIzinPraktikan, string> = {
+  menunggu: 'Menunggu',
+  diterima: 'Diterima',
+  ditolak: 'Ditolak',
 };
 
 export function ambilTanggalHariIniJakarta(): string {
@@ -331,6 +360,7 @@ type LocalStoreState = {
   authChecked: boolean;
   isLoadingFirestore: boolean;
   isSubmittingPresensi: boolean;
+  isSubmittingIzin: boolean;
   errorFirestore: string | null;
   hasFirestoreData: boolean;
   praktikumFirestore: Praktikum[];
@@ -340,6 +370,7 @@ type LocalStoreState = {
   kelasDiikutiIds: string[];
   presensiFirestoreMap: Record<string, Presensi>;
   izinFirestoreMap: Record<string, PengajuanIzinRingkas>;
+  izinTambahanMap: Record<string, PengajuanIzinRingkas>;
   presensiTambahan: Presensi[];
   tambahanHadirPerSesi: Record<string, number>;
   refreshKey: number;
@@ -351,6 +382,7 @@ let localState: LocalStoreState = {
   authChecked: !isFirebaseConfigured,
   isLoadingFirestore: isFirebaseConfigured,
   isSubmittingPresensi: false,
+  isSubmittingIzin: false,
   errorFirestore: null,
   hasFirestoreData: false,
   praktikumFirestore: [],
@@ -360,6 +392,7 @@ let localState: LocalStoreState = {
   kelasDiikutiIds: [],
   presensiFirestoreMap: {},
   izinFirestoreMap: {},
+  izinTambahanMap: {},
   presensiTambahan: [],
   tambahanHadirPerSesi: {},
   refreshKey: 0,
@@ -406,6 +439,7 @@ export function resetDataDemoPraktikan() {
   updateState({
     fallbackUser: PRAKTIKAN_FALLBACK,
     presensiTambahan: [],
+    izinTambahanMap: {},
     tambahanHadirPerSesi: {},
     errorFirestore: null,
   });
@@ -1087,6 +1121,25 @@ export function usePraktikanStore() {
     snapshot.sesiFirestore.length,
   ]);
 
+  const pengajuanIzinMap = useMemo<Record<string, PengajuanIzinRingkas>>(() => {
+    const activeId = currentUser?.id;
+    const lokalTerfilter: Record<string, PengajuanIzinRingkas> = {};
+    for (const [key, item] of Object.entries(snapshot.izinTambahanMap)) {
+      if (!activeId || item.userId === activeId) {
+        lokalTerfilter[key] = item;
+      }
+    }
+    return {
+      ...lokalTerfilter,
+      ...snapshot.izinFirestoreMap,
+    };
+  }, [currentUser?.id, snapshot.izinFirestoreMap, snapshot.izinTambahanMap]);
+
+  const daftarPengajuanIzin = useMemo<PengajuanIzinRingkas[]>(() => {
+    return Object.values(pengajuanIzinMap).sort((a, b) =>
+      b.createdAt.localeCompare(a.createdAt),
+    );
+  }, [pengajuanIzinMap]);
   const pengajuanIzinMap = snapshot.izinFirestoreMap;
 
   const catatPresensiPraktikan = async (
@@ -1290,21 +1343,210 @@ export function usePraktikanStore() {
     }
   };
 
+  const ajukanIzinPraktikan = async (
+    sesiIdInput: string,
+    alasanInput: string,
+  ): Promise<HasilPengajuanIzin> => {
+    const userAct = currentUser;
+    const userId = userAct?.id || '';
+    if (!userId || !isAuthenticated || !userAct) {
+      return {
+        ok: false,
+        reason: 'belum_login',
+        pesan: 'Silakan masuk menggunakan akun Praktikan terlebih dahulu.',
+      };
+    }
+
+    const isSesiDiFirestore = snapshot.sesiFirestore.some(
+      (item) => item.id === sesiIdInput,
+    );
+    const sesiId = isSesiDiFirestore
+      ? sesiIdInput
+      : normalisasiIdSesiLokal(sesiIdInput);
+    const targetSesi =
+      sesi.find((item) => item.id === sesiId) ??
+      sesi.find((item) => item.id === sesiIdInput);
+
+    if (!targetSesi) {
+      return {
+        ok: false,
+        reason: 'sesi_tidak_ditemukan',
+        pesan: 'Sesi praktikum tidak ditemukan.',
+      };
+    }
+
+    // Aturan Bisnis 5: Pengajuan izin hanya boleh dilakukan sebelum sesi ditutup (belum_dibuka atau dibuka)
+    if (targetSesi.status === 'ditutup') {
+      return {
+        ok: false,
+        reason: 'sesi_ditutup',
+        pesan:
+          'Sesi praktikum telah ditutup sehingga pengajuan izin tidak dapat dikirim.',
+      };
+    }
+
+    // Aturan Bisnis 5: Jika praktikan sudah melakukan presensi pada sesi tersebut, pengajuan izin ditolak
+    const sudahPresensi = presensi.some(
+      (item) =>
+        (item.sesiId === targetSesi.id || item.sesiId === sesiId) &&
+        item.userId === userId,
+    );
+    if (sudahPresensi) {
+      return {
+        ok: false,
+        reason: 'sudah_presensi',
+        pesan:
+          'Kamu sudah tercatat hadir pada sesi ini sehingga tidak dapat mengajukan izin.',
+      };
+    }
+
+    // Aturan Bisnis 5: Hanya 1 pengajuan izin per praktikan per sesi
+    const izinSudahAda =
+      pengajuanIzinMap[targetSesi.id] ?? pengajuanIzinMap[sesiId];
+    if (izinSudahAda) {
+      return {
+        ok: false,
+        reason: 'sudah_mengajukan',
+        pesan:
+          'Kamu sudah mengajukan izin pada sesi ini. Alasan izin yang sudah dikirim tidak dapat diubah.',
+      };
+    }
+
+    // Aturan Bisnis 5: Alasan izin wajib 10 sampai 500 karakter
+    const alasanBersih = alasanInput.trim();
+    if (alasanBersih.length === 0) {
+      return {
+        ok: false,
+        reason: 'alasan_kosong',
+        pesan: 'Alasan ketidakhadiran wajib diisi.',
+      };
+    }
+    if (alasanBersih.length < 10 || alasanBersih.length > 500) {
+      return {
+        ok: false,
+        reason: 'alasan_panjang',
+        pesan: `Alasan izin wajib berisi 10 sampai 500 karakter (saat ini ${alasanBersih.length} karakter).`,
+      };
+    }
+
+    updateState({ isSubmittingIzin: true });
+
+    try {
+      const targetFirestoreSesiId = isSesiDiFirestore
+        ? targetSesi.id
+        : ubahKeIdSesiApp(sesiId);
+
+      if (isFirebaseConfigured && (isSesiDiFirestore || auth.currentUser)) {
+        const izinDocRefCheck = doc(
+          db,
+          'sesi',
+          targetFirestoreSesiId,
+          'pengajuanIzin',
+          userId,
+        );
+        const existingIzinSnap = await getDoc(izinDocRefCheck);
+        if (existingIzinSnap.exists()) {
+          updateState({ isSubmittingIzin: false });
+          return {
+            ok: false,
+            reason: 'sudah_mengajukan',
+            pesan:
+              'Kamu sudah mengajukan izin pada sesi ini. Alasan izin yang sudah dikirim tidak dapat diubah.',
+          };
+        }
+      }
+
+      // Panggil layanan AI untuk klasifikasi alasan (gagal tidak memblokir penyimpanan)
+      const hasilAI = await klasifikasikanAlasanIzin(alasanBersih);
+      const waktuSekarang = new Date().toISOString();
+
+      if (isFirebaseConfigured && (isSesiDiFirestore || auth.currentUser)) {
+        const izinDocRef = doc(
+          db,
+          'sesi',
+          targetFirestoreSesiId,
+          'pengajuanIzin',
+          userId,
+        );
+
+        await setDoc(izinDocRef, {
+          userId,
+          praktikanId: userId,
+          sesiId: targetSesi.id,
+          nama: userAct.nama,
+          nim: userAct.nim ?? '',
+          alasan: alasanBersih,
+          statusKlasifikasi: hasilAI.statusKlasifikasi,
+          ...(hasilAI.kategoriAI ? { kategoriAI: hasilAI.kategoriAI } : {}),
+          status: 'menunggu',
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      const pengajuanBaru: PengajuanIzinRingkas = {
+        id: userId,
+        sesiId: targetSesi.id,
+        userId,
+        alasan: alasanBersih,
+        kategoriAI: hasilAI.kategoriAI,
+        statusKlasifikasi: hasilAI.statusKlasifikasi,
+        status: 'menunggu',
+        createdAt: waktuSekarang,
+      };
+
+      updateState({
+        isSubmittingIzin: false,
+        izinTambahanMap: {
+          ...localState.izinTambahanMap,
+          [targetSesi.id]: pengajuanBaru,
+        },
+      });
+
+      return {
+        ok: true,
+        pengajuan: pengajuanBaru,
+        pesanKlasifikasi: hasilAI.pesan,
+      };
+    } catch (err) {
+      updateState({ isSubmittingIzin: false });
+      const code = (err as { code?: string })?.code ?? '';
+
+      if (code === 'permission-denied') {
+        return {
+          ok: false,
+          reason: 'sesi_ditutup',
+          pesan:
+            'Pengajuan izin ditolak oleh aturan keamanan server (sesi mungkin sudah ditutup atau kamu sudah memiliki pengajuan pada sesi ini).',
+        };
+      }
+
+      return {
+        ok: false,
+        reason: 'gagal_jaringan',
+        pesan:
+          'Gagal menyimpan pengajuan izin ke Cloud Firestore. Periksa koneksi internet kamu dan coba lagi.',
+      };
+    }
+  };
+
   return {
     currentUser: currentUser ?? PRAKTIKAN_FALLBACK,
     isAuthenticated,
     isLoading: snapshot.isLoadingFirestore,
     isSubmittingPresensi: snapshot.isSubmittingPresensi,
+    isSubmittingIzin: snapshot.isSubmittingIzin,
     error: snapshot.errorFirestore,
     users: dummyUsers,
     daftarPraktikan: dummyUsers.filter((u) => u.role === 'praktikan'),
-     daftarKelasPraktikan,
+    daftarKelasPraktikan,
     praktikum,
     sesi,
     presensi,
     pengajuanIzinMap,
+    daftarPengajuanIzin,
     pilihPraktikanAktif: pilihPraktikan,
     catatPresensiPraktikan,
+    ajukanIzinPraktikan,
     muatUlangData: muatUlangDataPraktikan,
     resetDataDemoPraktikan,
   };
@@ -1367,5 +1609,26 @@ export function formatJamPresensi(waktuIso: string): string {
     const jam = String(date.getHours()).padStart(2, '0');
     const menit = String(date.getMinutes()).padStart(2, '0');
     return `${jam}.${menit}`;
+  }
+}
+
+export function formatWaktuLengkapWib(waktuIso: string): string {
+  const date = new Date(waktuIso);
+  if (Number.isNaN(date.getTime())) {
+    return '-';
+  }
+  try {
+    const tanggal = date
+      .toLocaleDateString('id-ID', {
+        timeZone: 'Asia/Jakarta',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      })
+      .replace('.', '');
+    const jam = formatJamPresensi(waktuIso);
+    return `${tanggal} · ${jam} WIB`;
+  } catch {
+    return `${formatJamPresensi(waktuIso)} WIB`;
   }
 }
