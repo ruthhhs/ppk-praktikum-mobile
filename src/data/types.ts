@@ -1,4 +1,3 @@
-
 export type Role = 'asisten' | 'praktikan';
 
 export type User = {
@@ -6,12 +5,23 @@ export type User = {
   nama: string;
   role: Role;
   nim?: string;
+  email: string;
+};
+
+export type UserProfile = {
+  uid: string;
+  nama: string;
+  email: string;
+  role: Role;
+  nim?: string;
+  createdAt?: unknown;
 };
 
 export type Praktikum = {
   id: string;
   nama: string;
   lab: string;
+  email: string;
 };
 
 export type SesiStatus =
