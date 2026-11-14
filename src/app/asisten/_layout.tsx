@@ -1,6 +1,6 @@
-import { Tabs } from 'expo-router';
-import { colors } from '../../constants/theme';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from "@expo/vector-icons";
+import { Tabs } from "expo-router";
+import { colors } from "../../constants/theme";
 
 export default function AsistenLayout() {
   return (
@@ -18,7 +18,7 @@ export default function AsistenLayout() {
       <Tabs.Screen
         name="jadwal"
         options={{
-          title: 'Jadwal',
+          title: "Jadwal",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="calendar-outline" size={size} color={color} />
           ),
@@ -28,7 +28,7 @@ export default function AsistenLayout() {
       <Tabs.Screen
         name="profil"
         options={{
-          title: 'Profil',
+          title: "Profil",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person-outline" size={size} color={color} />
           ),
@@ -44,6 +44,13 @@ export default function AsistenLayout() {
 
       <Tabs.Screen
         name="rekap-sesi"
+        options={{
+          href: null,
+        }}
+      />
+
+      <Tabs.Screen
+        name="data"
         options={{
           href: null,
         }}

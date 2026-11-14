@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { router } from "expo-router";
+import { useMemo, useState } from "react";
 import {
   FlatList,
   Pressable,
@@ -6,12 +7,11 @@ import {
   StyleSheet,
   Text,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-type StatusSesi = 'dibuka' | 'belum_dibuka' | 'ditutup';
-type FilterSesi = 'semua' | StatusSesi;
+type StatusSesi = "dibuka" | "belum_dibuka" | "ditutup";
+type FilterSesi = "semua" | StatusSesi;
 
 type Sesi = {
   id: string;
@@ -28,117 +28,117 @@ type Sesi = {
 };
 
 const WARNA = {
-  bg: '#FFFFFF',
-  surface: '#FEFFE0',
-  text: '#17454A',
-  textMuted: 'rgba(23, 69, 74, 0.7)',
-  primary: '#B5185F',
-  highlight: '#D0E86E',
-  accent: '#35C1C2',
-  border: 'rgba(23, 69, 74, 0.15)',
-  soft: '#F5F8F6',
+  bg: "#FFFFFF",
+  surface: "#FEFFE0",
+  text: "#17454A",
+  textMuted: "rgba(23, 69, 74, 0.7)",
+  primary: "#B5185F",
+  highlight: "#D0E86E",
+  accent: "#35C1C2",
+  border: "rgba(23, 69, 74, 0.15)",
+  soft: "#F5F8F6",
 };
 
 // Data sementara untuk UI B1. Ganti dengan data dari AppContext
 // setelah types.ts, dummy.ts, dan AppContext.tsx dari Dev A tersedia.
 const SESI_CONTOH: Sesi[] = [
   {
-    id: 'sesi-01',
-    praktikum: 'Basis Data',
+    id: "sesi-01",
+    praktikum: "Basis Data",
     pertemuanKe: 3,
-    kelas: 'A',
-    lab: 'Lab Komputer 2',
-    tanggal: '2026-10-23',
-    jamMulai: '08:00',
-    jamSelesai: '10:00',
-    status: 'dibuka',
+    kelas: "A",
+    lab: "Lab Komputer 2",
+    tanggal: "2026-10-23",
+    jamMulai: "08:00",
+    jamSelesai: "10:00",
+    status: "dibuka",
     hadir: 12,
     total: 30,
   },
   {
-    id: 'sesi-02',
-    praktikum: 'Pemrograman Web',
+    id: "sesi-02",
+    praktikum: "Pemrograman Web",
     pertemuanKe: 2,
-    kelas: 'B',
-    lab: 'Lab Komputer 1',
-    tanggal: '2026-10-24',
-    jamMulai: '10:00',
-    jamSelesai: '12:00',
-    status: 'belum_dibuka',
+    kelas: "B",
+    lab: "Lab Komputer 1",
+    tanggal: "2026-10-24",
+    jamMulai: "10:00",
+    jamSelesai: "12:00",
+    status: "belum_dibuka",
     hadir: 0,
     total: 28,
   },
   {
-    id: 'sesi-03',
-    praktikum: 'Jaringan Komputer',
+    id: "sesi-03",
+    praktikum: "Jaringan Komputer",
     pertemuanKe: 4,
-    kelas: 'A',
-    lab: 'Lab Jaringan',
-    tanggal: '2026-10-25',
-    jamMulai: '13:00',
-    jamSelesai: '15:00',
-    status: 'belum_dibuka',
+    kelas: "A",
+    lab: "Lab Jaringan",
+    tanggal: "2026-10-25",
+    jamMulai: "13:00",
+    jamSelesai: "15:00",
+    status: "belum_dibuka",
     hadir: 0,
     total: 26,
   },
   {
-    id: 'sesi-04',
-    praktikum: 'Basis Data',
+    id: "sesi-04",
+    praktikum: "Basis Data",
     pertemuanKe: 2,
-    kelas: 'A',
-    lab: 'Lab Komputer 2',
-    tanggal: '2026-10-20',
-    jamMulai: '08:00',
-    jamSelesai: '10:00',
-    status: 'ditutup',
+    kelas: "A",
+    lab: "Lab Komputer 2",
+    tanggal: "2026-10-20",
+    jamMulai: "08:00",
+    jamSelesai: "10:00",
+    status: "ditutup",
     hadir: 26,
     total: 30,
   },
   {
-    id: 'sesi-05',
-    praktikum: 'Pemrograman Web',
+    id: "sesi-05",
+    praktikum: "Pemrograman Web",
     pertemuanKe: 1,
-    kelas: 'B',
-    lab: 'Lab Komputer 1',
-    tanggal: '2026-10-18',
-    jamMulai: '10:00',
-    jamSelesai: '12:00',
-    status: 'ditutup',
+    kelas: "B",
+    lab: "Lab Komputer 1",
+    tanggal: "2026-10-18",
+    jamMulai: "10:00",
+    jamSelesai: "12:00",
+    status: "ditutup",
     hadir: 24,
     total: 28,
   },
 ];
 
 const LABEL_STATUS: Record<StatusSesi, string> = {
-  belum_dibuka: 'Belum dibuka',
-  dibuka: 'Dibuka',
-  ditutup: 'Ditutup',
+  belum_dibuka: "Belum dibuka",
+  dibuka: "Dibuka",
+  ditutup: "Ditutup",
 };
 
 const LABEL_FILTER: Record<FilterSesi, string> = {
-  semua: 'Semua',
-  dibuka: 'Dibuka',
-  belum_dibuka: 'Belum dibuka',
-  ditutup: 'Ditutup',
+  semua: "Semua",
+  dibuka: "Dibuka",
+  belum_dibuka: "Belum dibuka",
+  ditutup: "Ditutup",
 };
 
 function formatTanggal(tanggal: string) {
-  const [tahun, bulan, hari] = tanggal.split('-').map(Number);
+  const [tahun, bulan, hari] = tanggal.split("-").map(Number);
   const date = new Date(tahun, bulan - 1, hari);
 
   return date
-    .toLocaleDateString('id-ID', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
+    .toLocaleDateString("id-ID", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
     })
-    .replace('.', '');
+    .replace(".", "");
 }
 
 function StatusBadge({ status }: { status: StatusSesi }) {
   return (
     <View style={[styles.statusBadge, styles[`status_${status}`]]}>
-      {status === 'dibuka' && <View style={styles.statusDot} />}
+      {status === "dibuka" && <View style={styles.statusDot} />}
       <Text style={[styles.statusText, styles[`statusText_${status}`]]}>
         {LABEL_STATUS[status]}
       </Text>
@@ -166,12 +166,7 @@ function FilterButton({
         pressed && styles.pressed,
       ]}
     >
-      <Text
-        style={[
-          styles.filterText,
-          selected && styles.filterTextSelected,
-        ]}
-      >
+      <Text style={[styles.filterText, selected && styles.filterTextSelected]}>
         {label}
       </Text>
     </Pressable>
@@ -188,7 +183,7 @@ function SessionCard({ sesi }: { sesi: Sesi }) {
       accessibilityLabel={`Buka detail ${sesi.praktikum}, pertemuan ${sesi.pertemuanKe}`}
       onPress={() =>
         router.push({
-          pathname: '/asisten/detail-sesi',
+          pathname: "/asisten/detail-sesi",
           params: { sesiId: sesi.id },
         })
       }
@@ -205,7 +200,7 @@ function SessionCard({ sesi }: { sesi: Sesi }) {
       <Text style={styles.courseName}>{sesi.praktikum}</Text>
       <Text style={styles.sessionMeta}>
         Pertemuan {sesi.pertemuanKe}
-        <Text style={styles.metaSeparator}>  ·  </Text>
+        <Text style={styles.metaSeparator}> · </Text>
         Kelas {sesi.kelas}
       </Text>
 
@@ -259,24 +254,24 @@ function SessionCard({ sesi }: { sesi: Sesi }) {
 }
 
 export default function AsistenJadwalScreen() {
-  const [filter, setFilter] = useState<FilterSesi>('semua');
+  const [filter, setFilter] = useState<FilterSesi>("semua");
 
   const sesiTerfilter = useMemo(() => {
-    return SESI_CONTOH
-      .filter((sesi) => filter === 'semua' || sesi.status === filter)
-      .sort((a, b) => {
-        if (a.status === 'dibuka' && b.status !== 'dibuka') return -1;
-        if (a.status !== 'dibuka' && b.status === 'dibuka') return 1;
-        return a.tanggal.localeCompare(b.tanggal);
-      });
+    return SESI_CONTOH.filter(
+      (sesi) => filter === "semua" || sesi.status === filter,
+    ).sort((a, b) => {
+      if (a.status === "dibuka" && b.status !== "dibuka") return -1;
+      if (a.status !== "dibuka" && b.status === "dibuka") return 1;
+      return a.tanggal.localeCompare(b.tanggal);
+    });
   }, [filter]);
 
   const jumlahDibuka = SESI_CONTOH.filter(
-    (sesi) => sesi.status === 'dibuka',
+    (sesi) => sesi.status === "dibuka",
   ).length;
 
   const jumlahBelumDibuka = SESI_CONTOH.filter(
-    (sesi) => sesi.status === 'belum_dibuka',
+    (sesi) => sesi.status === "belum_dibuka",
   ).length;
 
   const header = (
@@ -298,6 +293,17 @@ export default function AsistenJadwalScreen() {
         <Text style={styles.screenSubtitle}>
           Pantau sesi dan kehadiran praktikan.
         </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Kelola data praktikum, kelas, peserta, dan jadwal"
+          onPress={() => router.push("/asisten/data")}
+          style={({ pressed }) => [
+            styles.manageDataButton,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={styles.manageDataButtonText}>Kelola data asisten ›</Text>
+        </Pressable>
       </View>
 
       <View style={styles.summaryCard}>
@@ -355,10 +361,7 @@ export default function AsistenJadwalScreen() {
   );
 
   return (
-    <SafeAreaView
-      edges={['top', 'left', 'right']}
-      style={styles.safeArea}
-    >
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
       <FlatList
         data={sesiTerfilter}
         keyExtractor={(item) => item.id}
@@ -393,8 +396,8 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
   },
   brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 9,
     marginBottom: 24,
   },
@@ -402,29 +405,29 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: WARNA.primary,
   },
   brandMarkText: {
     color: WARNA.surface,
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: -0.5,
   },
   brandName: {
     color: WARNA.textMuted,
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
     letterSpacing: 0.15,
   },
   titleBlock: {
     marginBottom: 20,
   },
   titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 10,
   },
   screenTitle: {
@@ -432,7 +435,7 @@ const styles = StyleSheet.create({
     color: WARNA.text,
     fontSize: 27,
     lineHeight: 33,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: -0.7,
   },
   rolePill: {
@@ -444,7 +447,7 @@ const styles = StyleSheet.create({
   rolePillText: {
     color: WARNA.text,
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 0.8,
   },
   screenSubtitle: {
@@ -453,6 +456,20 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 6,
   },
+  manageDataButton: {
+    alignSelf: "flex-start",
+    minHeight: 38,
+    justifyContent: "center",
+    paddingHorizontal: 13,
+    marginTop: 12,
+    borderRadius: 11,
+    backgroundColor: WARNA.primary,
+  },
+  manageDataButtonText: {
+    color: WARNA.bg,
+    fontSize: 12,
+    fontWeight: "800",
+  },
   summaryCard: {
     padding: 17,
     borderRadius: 20,
@@ -460,15 +477,15 @@ const styles = StyleSheet.create({
     marginBottom: 26,
   },
   summaryHeading: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 18,
   },
   summaryEyebrow: {
-    color: 'rgba(254, 255, 224, 0.78)',
+    color: "rgba(254, 255, 224, 0.78)",
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: "700",
     letterSpacing: 1,
   },
   summaryPeriod: {
@@ -478,11 +495,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 5,
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   summaryStats: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   summaryStat: {
     flex: 1,
@@ -491,11 +508,11 @@ const styles = StyleSheet.create({
     color: WARNA.surface,
     fontSize: 25,
     lineHeight: 30,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: -0.5,
   },
   summaryLabel: {
-    color: 'rgba(254, 255, 224, 0.78)',
+    color: "rgba(254, 255, 224, 0.78)",
     fontSize: 10,
     lineHeight: 15,
     marginTop: 3,
@@ -503,7 +520,7 @@ const styles = StyleSheet.create({
   summaryDivider: {
     width: 1,
     height: 38,
-    backgroundColor: 'rgba(254, 255, 224, 0.22)',
+    backgroundColor: "rgba(254, 255, 224, 0.22)",
     marginHorizontal: 10,
   },
   listHeading: {
@@ -513,7 +530,7 @@ const styles = StyleSheet.create({
     color: WARNA.text,
     fontSize: 18,
     lineHeight: 24,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: -0.2,
   },
   listSubtitle: {
@@ -528,7 +545,7 @@ const styles = StyleSheet.create({
   },
   filterButton: {
     minHeight: 36,
-    justifyContent: 'center',
+    justifyContent: "center",
     paddingHorizontal: 14,
     borderRadius: 99,
     borderWidth: 1,
@@ -542,7 +559,7 @@ const styles = StyleSheet.create({
   filterText: {
     color: WARNA.textMuted,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   filterTextSelected: {
     color: WARNA.surface,
@@ -568,23 +585,23 @@ const styles = StyleSheet.create({
     opacity: 0.75,
   },
   cardTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 8,
     marginBottom: 12,
   },
   cardEyebrow: {
     color: WARNA.textMuted,
     fontSize: 9,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 1,
   },
   statusBadge: {
     minHeight: 27,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 6,
     paddingHorizontal: 10,
     borderRadius: 99,
@@ -610,7 +627,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   statusText_dibuka: {
     color: WARNA.text,
@@ -625,7 +642,7 @@ const styles = StyleSheet.create({
     color: WARNA.text,
     fontSize: 19,
     lineHeight: 24,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: -0.3,
   },
   sessionMeta: {
@@ -636,7 +653,7 @@ const styles = StyleSheet.create({
   },
   metaSeparator: {
     color: WARNA.accent,
-    fontWeight: '900',
+    fontWeight: "900",
   },
   infoDivider: {
     height: 1,
@@ -644,7 +661,7 @@ const styles = StyleSheet.create({
     marginVertical: 14,
   },
   infoGrid: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
   },
   infoBlock: {
@@ -654,7 +671,7 @@ const styles = StyleSheet.create({
   infoLabel: {
     color: WARNA.textMuted,
     fontSize: 9,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 0.9,
     marginBottom: 5,
   },
@@ -662,7 +679,7 @@ const styles = StyleSheet.create({
     color: WARNA.text,
     fontSize: 13,
     lineHeight: 18,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   infoSubValue: {
     color: WARNA.textMuted,
@@ -674,47 +691,47 @@ const styles = StyleSheet.create({
     marginTop: 15,
   },
   attendanceHeading: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
     marginBottom: 7,
   },
   attendanceLabel: {
     color: WARNA.textMuted,
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   attendanceCount: {
     color: WARNA.primary,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   attendanceTotal: {
     color: WARNA.textMuted,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   progressTrack: {
     height: 6,
-    overflow: 'hidden',
+    overflow: "hidden",
     borderRadius: 99,
     backgroundColor: WARNA.border,
   },
   progressFill: {
-    height: '100%',
+    height: "100%",
     borderRadius: 99,
     backgroundColor: WARNA.primary,
   },
   cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
     gap: 5,
     marginTop: 14,
   },
   detailLink: {
     color: WARNA.primary,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   detailArrow: {
     color: WARNA.primary,
@@ -723,7 +740,7 @@ const styles = StyleSheet.create({
     marginTop: -2,
   },
   emptyState: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingHorizontal: 24,
     paddingVertical: 42,
     borderRadius: 20,
@@ -735,26 +752,26 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: WARNA.highlight,
     marginBottom: 12,
   },
   emptyMarkText: {
     color: WARNA.text,
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   emptyTitle: {
     color: WARNA.text,
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   emptyDescription: {
     color: WARNA.textMuted,
     fontSize: 12,
     lineHeight: 18,
-    textAlign: 'center',
+    textAlign: "center",
     marginTop: 5,
   },
 });
