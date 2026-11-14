@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Pressable,
   ScrollView,
@@ -9,46 +10,24 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import {
+  ambilNamaPraktikum,
+  formatJamPresensi,
+  formatRentangJam,
+  formatTanggalIndonesia,
+  usePraktikanStore,
+  WARNA,
+  type Praktikum,
+  type Presensi,
+  type Role,
+  type Sesi,
+  type SesiStatus,
+  type User,
+} from '../../components/praktikan/praktikanStore';
 
-export type Role = 'asisten' | 'praktikan';
+export type { Praktikum, Presensi, Role, Sesi, SesiStatus, User };
 
-export type User = {
-  id: string;
-  nama: string;
-  role: Role;
-  nim?: string;
-};
-
-export type Praktikum = {
-  id: string;
-  nama: string;
-  lab: string;
-};
-
-export type SesiStatus = 'belum_dibuka' | 'dibuka' | 'ditutup';
-
-export type Sesi = {
-  id: string;
-  praktikumId: string;
-  pertemuanKe: number;
-  kelas: string;
-  lab: string;
-  tanggal: string;
-  jamMulai: string;
-  jamSelesai: string;
-  status: SesiStatus;
-  kodePresensi?: string;
-  catatan?: string;
-};
-
-export type Presensi = {
-  id: string;
-  sesiId: string;
-  userId: string;
-  waktu: string;
-};
-
-type StatusKehadiranRiwayat = 'hadir' | 'tidak_hadir';
+type StatusKehadiranRiwayat = 'hadir' | 'izin_diterima' | 'tidak_hadir';
 type FilterRiwayat = 'semua' | 'hadir' | 'tidak_hadir';
 
 type ItemRiwayatSesi = {
@@ -58,163 +37,11 @@ type ItemRiwayatSesi = {
   waktuPresensi?: string;
 };
 
-const WARNA = {
-  bg: '#FFFFFF',
-  surface: '#FEFFE0',
-  text: '#17454A',
-  textMuted: 'rgba(23, 69, 74, 0.7)',
-  primary: '#B5185F',
-  highlight: '#D0E86E',
-  accent: '#35C1C2',
-  border: 'rgba(23, 69, 74, 0.15)',
-} as const;
-
-const PRAKTIKAN_AKTIF: User = {
-  id: 'praktikan-01',
-  nama: 'Siti Aisyah',
-  role: 'praktikan',
-  nim: '2210512001',
-};
-
-const DAFTAR_PRAKTIKUM: Record<string, Praktikum> = {
-  'prak-01': {
-    id: 'prak-01',
-    nama: 'Basis Data',
-    lab: 'Lab Komputer 2',
-  },
-  'prak-02': {
-    id: 'prak-02',
-    nama: 'Pemrograman Web',
-    lab: 'Lab Komputer 1',
-  },
-  'prak-03': {
-    id: 'prak-03',
-    nama: 'Jaringan Komputer',
-    lab: 'Lab Jaringan',
-  },
-};
-
-const SESI_CONTOH: Sesi[] = [
-  {
-    id: 'sesi-01',
-    praktikumId: 'prak-01',
-    pertemuanKe: 3,
-    kelas: 'A',
-    lab: 'Lab Komputer 2',
-    tanggal: '2026-10-23',
-    jamMulai: '08:00',
-    jamSelesai: '10:00',
-    status: 'dibuka',
-    kodePresensi: '4827',
-    catatan: 'Normalisasi basis data',
-  },
-  {
-    id: 'sesi-02',
-    praktikumId: 'prak-02',
-    pertemuanKe: 2,
-    kelas: 'B',
-    lab: 'Lab Komputer 1',
-    tanggal: '2026-10-24',
-    jamMulai: '10:00',
-    jamSelesai: '12:00',
-    status: 'belum_dibuka',
-  },
-  {
-    id: 'sesi-03',
-    praktikumId: 'prak-03',
-    pertemuanKe: 4,
-    kelas: 'A',
-    lab: 'Lab Jaringan',
-    tanggal: '2026-10-25',
-    jamMulai: '13:00',
-    jamSelesai: '15:00',
-    status: 'belum_dibuka',
-  },
-  {
-    id: 'sesi-04',
-    praktikumId: 'prak-01',
-    pertemuanKe: 2,
-    kelas: 'A',
-    lab: 'Lab Komputer 2',
-    tanggal: '2026-10-20',
-    jamMulai: '08:00',
-    jamSelesai: '10:00',
-    status: 'ditutup',
-    catatan: 'Model relasional dan kunci primer',
-  },
-  {
-    id: 'sesi-05',
-    praktikumId: 'prak-02',
-    pertemuanKe: 1,
-    kelas: 'B',
-    lab: 'Lab Komputer 1',
-    tanggal: '2026-10-18',
-    jamMulai: '10:00',
-    jamSelesai: '12:00',
-    status: 'ditutup',
-    catatan: 'Struktur dasar dokumen HTML dan CSS',
-  },
-];
-
-// Berisi presensi milik praktikan aktif (praktikan-01) dan praktikan lain (praktikan-02)
-// untuk memastikan Riwayat hanya menampilkan presensi milik praktikan yang sedang login (FR-6).
-const PRESENSI_CONTOH: Presensi[] = [
-  {
-    id: 'presensi-01',
-    sesiId: 'sesi-01',
-    userId: 'praktikan-01',
-    waktu: '2026-10-23T08:03:12+07:00',
-  },
-  {
-    id: 'presensi-02',
-    sesiId: 'sesi-04',
-    userId: 'praktikan-01',
-    waktu: '2026-10-20T08:05:40+07:00',
-  },
-  {
-    id: 'presensi-03',
-    sesiId: 'sesi-05',
-    userId: 'praktikan-02',
-    waktu: '2026-10-18T10:04:15+07:00',
-  },
-];
-
 const LABEL_FILTER: Record<FilterRiwayat, string> = {
   semua: 'Semua',
   hadir: 'Hadir',
   tidak_hadir: 'Tidak hadir',
 };
-
-function ambilNamaPraktikum(praktikumId: string): string {
-  return DAFTAR_PRAKTIKUM[praktikumId]?.nama ?? 'Praktikum';
-}
-
-function formatTanggal(tanggal: string): string {
-  const [tahun, bulan, hari] = tanggal.split('-').map(Number);
-  const date = new Date(tahun, bulan - 1, hari);
-
-  return date
-    .toLocaleDateString('id-ID', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-    })
-    .replace('.', '');
-}
-
-function formatRentangJam(jamMulai: string, jamSelesai: string): string {
-  return `${jamMulai.replace(':', '.')} - ${jamSelesai.replace(':', '.')}`;
-}
-
-function formatJamPresensi(waktuIso: string): string {
-  const date = new Date(waktuIso);
-  if (Number.isNaN(date.getTime())) {
-    return '08.03';
-  }
-  const jam = String(date.getHours()).padStart(2, '0');
-  const menit = String(date.getMinutes()).padStart(2, '0');
-  return `${jam}.${menit}`;
-}
 
 function AttendanceBadge({
   status,
@@ -231,7 +58,16 @@ function AttendanceBadge({
           <Text style={styles.badgeHadirCheck}>✓</Text>
           <Text style={styles.badgeHadirText}>Hadir</Text>
         </View>
-        {jam ? <Text style={styles.waktuHadirText}>{jam}</Text> : null}
+        {jam ? <Text style={styles.waktuHadirText}>{jam} WIB</Text> : null}
+      </View>
+    );
+  }
+
+  if (status === 'izin_diterima') {
+    return (
+      <View style={styles.badgeHadir}>
+        <Text style={styles.badgeHadirCheck}>✓</Text>
+        <Text style={styles.badgeHadirText}>Izin Disetujui</Text>
       </View>
     );
   }
@@ -287,7 +123,7 @@ function RiwayatCard({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${namaPraktikum} pertemuan ${sesi.pertemuanKe}, status ${statusKehadiran === 'hadir' ? 'Hadir' : 'Tidak hadir'}`}
+      accessibilityLabel={`${namaPraktikum} pertemuan ${sesi.pertemuanKe}, status ${statusKehadiran === 'hadir' ? 'Hadir' : statusKehadiran === 'izin_diterima' ? 'Izin Disetujui' : 'Tidak hadir'}`}
       onPress={onPress}
       style={({ pressed }) => [
         styles.riwayatCard,
@@ -303,16 +139,15 @@ function RiwayatCard({
             Kelas {sesi.kelas} · {sesi.lab}
           </Text>
         </View>
-        <Text style={styles.dateLabel}>{formatTanggal(sesi.tanggal)}</Text>
+        <Text style={styles.dateLabel}>
+          {formatTanggalIndonesia(sesi.tanggal)}
+        </Text>
       </View>
 
       <View style={styles.divider} />
 
       <View style={styles.cardBottomRow}>
-        <AttendanceBadge
-          status={statusKehadiran}
-          waktuIso={waktuPresensi}
-        />
+        <AttendanceBadge status={statusKehadiran} waktuIso={waktuPresensi} />
         <Text style={styles.scheduleClockText}>
           {formatRentangJam(sesi.jamMulai, sesi.jamSelesai)}
         </Text>
@@ -356,63 +191,93 @@ function EmptyRiwayatState({
 }
 
 export default function RiwayatKehadiranScreen() {
+  const {
+    currentUser,
+    isAuthenticated,
+    isLoading,
+    error,
+    praktikum,
+    sesi,
+    presensi,
+    pengajuanIzinMap,
+    muatUlangData,
+  } = usePraktikanStore();
   const [filterAktif, setFilterAktif] = useState<FilterRiwayat>('semua');
 
-  // Hanya mengambil presensi milik praktikan yang sedang login (FR-6)
   const petaPresensiSaya = useMemo(() => {
     const map = new Map<string, Presensi>();
-    for (const item of PRESENSI_CONTOH) {
-      if (item.userId === PRAKTIKAN_AKTIF.id) {
+    for (const item of presensi) {
+      if (item.userId === currentUser.id) {
         map.set(item.sesiId, item);
       }
     }
     return map;
-  }, []);
+  }, [currentUser.id, presensi]);
 
-  // Aturan LAYOUT.md Bagian 3.6:
-  // - Sesi Belum dibuka tidak ditampilkan.
-  // - Sesi yang sudah dihadiri tampil Hadir beserta jam.
-  // - Sesi Ditutup tanpa presensi tampil Tidak hadir.
   const semuaRiwayat = useMemo<ItemRiwayatSesi[]>(() => {
     const hasil: ItemRiwayatSesi[] = [];
 
-    for (const sesi of SESI_CONTOH) {
-      if (sesi.status === 'belum_dibuka') {
+    for (const itemSesi of sesi) {
+      if (itemSesi.status === 'belum_dibuka') {
         continue;
       }
 
-      const catatanPresensi = petaPresensiSaya.get(sesi.id);
+      const catatanPresensi = petaPresensiSaya.get(itemSesi.id);
+      const catatanIzin = pengajuanIzinMap[itemSesi.id];
 
       if (catatanPresensi) {
         hasil.push({
-          sesi,
-          namaPraktikum: ambilNamaPraktikum(sesi.praktikumId),
+          sesi: itemSesi,
+          namaPraktikum: ambilNamaPraktikum(
+            praktikum,
+            itemSesi.praktikumId,
+            itemSesi.namaPraktikum,
+          ),
           statusKehadiran: 'hadir',
           waktuPresensi: catatanPresensi.waktu,
         });
-      } else if (sesi.status === 'ditutup') {
+      } else if (catatanIzin?.status === 'diterima') {
         hasil.push({
-          sesi,
-          namaPraktikum: ambilNamaPraktikum(sesi.praktikumId),
+          sesi: itemSesi,
+          namaPraktikum: ambilNamaPraktikum(
+            praktikum,
+            itemSesi.praktikumId,
+            itemSesi.namaPraktikum,
+          ),
+          statusKehadiran: 'izin_diterima',
+        });
+      } else if (itemSesi.status === 'ditutup') {
+        hasil.push({
+          sesi: itemSesi,
+          namaPraktikum: ambilNamaPraktikum(
+            praktikum,
+            itemSesi.praktikumId,
+            itemSesi.namaPraktikum,
+          ),
           statusKehadiran: 'tidak_hadir',
         });
       }
     }
 
     return hasil.sort((a, b) => b.sesi.tanggal.localeCompare(a.sesi.tanggal));
-  }, [petaPresensiSaya]);
+  }, [pengajuanIzinMap, petaPresensiSaya, praktikum, sesi]);
 
   const daftarTampil = useMemo(() => {
     if (filterAktif === 'semua') {
       return semuaRiwayat;
     }
-    return semuaRiwayat.filter((item) => item.statusKehadiran === filterAktif);
+    if (filterAktif === 'hadir') {
+      return semuaRiwayat.filter((item) => item.statusKehadiran === 'hadir');
+    }
+    return semuaRiwayat.filter(
+      (item) => item.statusKehadiran === 'tidak_hadir',
+    );
   }, [filterAktif, semuaRiwayat]);
 
   const jumlahHadir = useMemo(
     () =>
       semuaRiwayat.filter((item) => item.statusKehadiran === 'hadir').length,
-    [semuaRiwayat]
+    [semuaRiwayat],
   );
 
   const totalSesiRiwayat = semuaRiwayat.length;
@@ -428,10 +293,36 @@ export default function RiwayatKehadiranScreen() {
     });
   };
 
+  if (!isAuthenticated) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.stateWrapper}>
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>Akun Belum Masuk</Text>
+            <Text style={styles.emptyBody}>
+              Silakan masuk menggunakan akun Praktikan terlebih dahulu untuk
+              melihat riwayat kehadiranmu.
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.replace('/')}
+              style={({ pressed }) => [
+                styles.resetButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.resetButtonText}>Ke Halaman Masuk</Text>
+            </Pressable>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <FlatList
-        data={daftarTampil}
+        data={isLoading ? [] : daftarTampil}
         keyExtractor={(item) => item.sesi.id}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
@@ -440,10 +331,29 @@ export default function RiwayatKehadiranScreen() {
             <View style={styles.titleSection}>
               <Text style={styles.screenTitle}>Riwayat Kehadiran</Text>
               <Text style={styles.studentIdentity}>
-                {PRAKTIKAN_AKTIF.nama}
-                {PRAKTIKAN_AKTIF.nim ? ` · NIM ${PRAKTIKAN_AKTIF.nim}` : ''}
+                {currentUser.nama}
+                {currentUser.nim ? ` · NIM ${currentUser.nim}` : ''}
               </Text>
             </View>
+
+            {error ? (
+              <View style={styles.errorBanner}>
+                <Text style={styles.errorBannerTitle}>
+                  Gagal Memuat Riwayat Cloud Firestore
+                </Text>
+                <Text style={styles.errorBannerBody}>{error}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={muatUlangData}
+                  style={({ pressed }) => [
+                    styles.resetButton,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.resetButtonText}>Muat Ulang</Text>
+                </Pressable>
+              </View>
+            ) : null}
 
             <View style={styles.summaryCard}>
               <View style={styles.summaryHeaderRow}>
@@ -478,7 +388,7 @@ export default function RiwayatKehadiranScreen() {
                 <View style={styles.statPill}>
                   <View style={styles.statDotTidakHadir} />
                   <Text style={styles.statText}>
-                    {totalSesiRiwayat - jumlahHadir} Tidak hadir
+                    {Math.max(0, totalSesiRiwayat - jumlahHadir)} Tidak hadir
                   </Text>
                 </View>
               </View>
@@ -507,10 +417,20 @@ export default function RiwayatKehadiranScreen() {
           />
         )}
         ListEmptyComponent={
-          <EmptyRiwayatState
-            filter={filterAktif}
-            onResetFilter={() => setFilterAktif('semua')}
-          />
+          isLoading ? (
+            <View style={styles.emptyCard}>
+              <ActivityIndicator size="small" color={WARNA.primary} />
+              <Text style={styles.emptyTitle}>Memuat riwayat kehadiran...</Text>
+              <Text style={styles.emptyBody}>
+                Mengambil data presensi milik akun kamu dari Cloud Firestore.
+              </Text>
+            </View>
+          ) : (
+            <EmptyRiwayatState
+              filter={filterAktif}
+              onResetFilter={() => setFilterAktif('semua')}
+            />
+          )
         }
       />
     </SafeAreaView>
@@ -521,6 +441,11 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: WARNA.bg,
+  },
+  stateWrapper: {
+    flex: 1,
+    paddingHorizontal: 18,
+    justifyContent: 'center',
   },
   listContainer: {
     paddingHorizontal: 18,
@@ -545,6 +470,24 @@ const styles = StyleSheet.create({
     color: WARNA.textMuted,
     fontSize: 14,
     fontWeight: '600',
+  },
+  errorBanner: {
+    backgroundColor: WARNA.surface,
+    borderColor: WARNA.primary,
+    borderWidth: 1.5,
+    borderRadius: 18,
+    padding: 16,
+    gap: 8,
+  },
+  errorBannerTitle: {
+    color: WARNA.primary,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  errorBannerBody: {
+    color: WARNA.text,
+    fontSize: 13,
+    lineHeight: 19,
   },
   summaryCard: {
     backgroundColor: WARNA.surface,
