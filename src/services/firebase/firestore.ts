@@ -8,6 +8,7 @@ import {
   onSnapshot,
   setDoc,
   updateDoc,
+  serverTimestamp,
 } from '@react-native-firebase/firestore';
 export { serverTimestamp } from '@react-native-firebase/firestore';
 import type {
@@ -50,6 +51,7 @@ function collectionReference<T extends DocumentData>(
 
 export const firestoreRefs = {
   user: (uid: string) => documentReference<UserProfile>('users', uid),
+  users: () => collectionReference<UserProfile>('users'),
   praktikum: () => collectionReference<PraktikumDoc>('praktikum'),
   praktikumDoc: (praktikumId: string) =>
     documentReference<PraktikumDoc>('praktikum', praktikumId),
@@ -150,4 +152,31 @@ export function removeDocument<T extends DocumentData>(
   reference: DocumentReference<T, T>,
 ): Promise<void> {
   return deleteDoc(reference);
+}
+
+export async function ambilDaftarPraktikan(): Promise<WithId<UserProfile>[]> {
+  const allUsers = await readCollection(firestoreRefs.users());
+  return allUsers.filter((u) => u.role === "praktikan");
+}
+
+export function tambahPeserta(kelasId: string, uid: string): Promise<void> {
+  return setDocument(firestoreRefs.pesertaDoc(kelasId, uid), {
+    uid,
+    aktif: true,
+    joinedAt: serverTimestamp(),
+  });
+}
+
+export function pantauPesertaKelas(
+  kelasId: string,
+  onValue: (value: WithId<PesertaDoc>[]) => void,
+  onError: FirestoreListenerError,
+): Unsubscribe {
+  return listenCollection(firestoreRefs.peserta(kelasId), onValue, onError);
+}
+
+export function nonaktifkanPeserta(kelasId: string, uid: string): Promise<void> {
+  return updateDocument(firestoreRefs.pesertaDoc(kelasId, uid), {
+    aktif: false,
+  });
 }
