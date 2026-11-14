@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged } from '@react-native-firebase/auth';
 import {
   collection,
   doc,
@@ -8,7 +8,7 @@ import {
   serverTimestamp,
   setDoc,
   type Timestamp,
-} from 'firebase/firestore';
+} from '@react-native-firebase/firestore';
 import { dummyPresensi, dummySesi, dummyUsers } from '../../data/dummy';
 import type { Praktikum, Role, SesiStatus, User } from '../../data/types';
 import { useApp } from '../../hooks/useApp';
