@@ -1,27 +1,20 @@
-import type { ReactNode } from 'react';
+import type { ReactNode } from "react";
 import {
-  Pressable,
-  View,
-  StyleSheet,
-  type ViewStyle,
-} from 'react-native';
+    Pressable,
+    StyleSheet,
+    View,
+    type StyleProp,
+    type ViewStyle,
+} from "react-native";
 
 type CardProps = {
   children: ReactNode;
   onPress?: () => void;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 };
 
-export default function Card({
-  children,
-  onPress,
-  style,
-}: CardProps) {
-  const content = (
-    <View style={[styles.content, style]}>
-      {children}
-    </View>
-  );
+export default function Card({ children, onPress, style }: CardProps) {
+  const content = <View style={[styles.content, style]}>{children}</View>;
 
   if (!onPress) return content;
 
@@ -38,10 +31,10 @@ export default function Card({
 
 const styles = StyleSheet.create({
   content: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: "#E5E7EB",
     padding: 16,
   },
   pressed: {

@@ -1,58 +1,63 @@
 import { router } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../../constants/theme";
+import type {
+  JadwalDoc,
+  KelasDoc,
+  PesertaDoc,
+  PraktikumDoc,
+  SesiDoc,
+} from "../../data/firestoreType";
+import { useAuth } from "../../hooks/useAuth";
+import {
+  addDocument,
+  firestoreRefs,
+  listenCollection,
+  readCollection,
+  readDocument,
+  removeDocument,
+  serverTimestamp,
+  setDocument,
+  updateDocument,
+} from "../../services/firebase/firestore";
 
 type DataKind = "praktikum" | "kelas" | "peserta" | "jadwal";
-type ManagedRecord = { id: string; aktif: boolean };
-
-type PraktikumData = ManagedRecord & {
-  nama: string;
-  deskripsi: string;
-};
-
-type KelasData = ManagedRecord & {
-  nama: string;
-  praktikumId: string;
-};
-
-type PesertaData = ManagedRecord & {
-  nama: string;
-  nim: string;
-  kelasId: string;
-  punyaRiwayat: boolean;
-};
-
-type JadwalData = ManagedRecord & {
-  kelasId: string;
-  pertemuanKe: number;
-  tanggal: string;
-  jamMulai: string;
-  jamSelesai: string;
-  lokasi: string;
-  punyaSesi: boolean;
-};
+type RecordItem = { id: string; aktif: boolean };
+type PraktikumData = RecordItem & Pick<PraktikumDoc, "nama" | "deskripsi">;
+type KelasData = RecordItem &
+  Pick<KelasDoc, "nama" | "praktikumId" | "asistenUids">;
+type PesertaData = RecordItem & Pick<PesertaDoc, "uid"> & { kelasId: string };
+type JadwalData = RecordItem & Omit<JadwalDoc, "aktif">;
+type SesiData = SesiDoc & { id: string };
 
 type Draft = {
   nama: string;
   deskripsi: string;
   praktikumId: string;
   kelasId: string;
-  nim: string;
+  uid: string;
   pertemuanKe: string;
   tanggal: string;
   jamMulai: string;
   jamSelesai: string;
   lokasi: string;
+};
+
+type PendingAction = {
+  kind: DataKind;
+  id: string;
+  mode: "hapus" | "nonaktifkan" | "aktifkan";
 };
 
 const TABS: { id: DataKind; label: string }[] = [
@@ -67,7 +72,7 @@ const emptyDraft: Draft = {
   deskripsi: "",
   praktikumId: "",
   kelasId: "",
-  nim: "",
+  uid: "",
   pertemuanKe: "",
   tanggal: "",
   jamMulai: "",
@@ -86,75 +91,17 @@ function isValidDate(value: string) {
   );
 }
 
-const initialPraktikum: PraktikumData[] = [
-  {
-    id: "praktikum-001",
-    nama: "Pemrograman Web",
-    deskripsi: "HTML, CSS, dan pengembangan web.",
-    aktif: true,
-  },
-  {
-    id: "praktikum-002",
-    nama: "Basis Data",
-    deskripsi: "Perancangan dan query basis data.",
-    aktif: true,
-  },
-  {
-    id: "praktikum-003",
-    nama: "Struktur Data",
-    deskripsi: "Struktur data dan algoritma dasar.",
-    aktif: true,
-  },
-];
-
-const initialKelas: KelasData[] = [
-  { id: "kelas-001", nama: "A", praktikumId: "praktikum-001", aktif: true },
-  { id: "kelas-002", nama: "B", praktikumId: "praktikum-002", aktif: true },
-];
-
-const initialPeserta: PesertaData[] = [
-  {
-    id: "peserta-001",
-    nama: "Budi Santoso",
-    nim: "240101002",
-    kelasId: "kelas-001",
-    aktif: true,
-    punyaRiwayat: true,
-  },
-  {
-    id: "peserta-002",
-    nama: "Citra Lestari",
-    nim: "240101003",
-    kelasId: "kelas-001",
-    aktif: true,
-    punyaRiwayat: false,
-  },
-];
-
-const initialJadwal: JadwalData[] = [
-  {
-    id: "jadwal-001",
-    kelasId: "kelas-001",
-    pertemuanKe: 1,
-    tanggal: "2026-10-23",
-    jamMulai: "08:00",
-    jamSelesai: "10:00",
-    lokasi: "Lab Komputer 1",
-    aktif: true,
-    punyaSesi: true,
-  },
-  {
-    id: "jadwal-002",
-    kelasId: "kelas-002",
-    pertemuanKe: 2,
-    tanggal: "2026-10-24",
-    jamMulai: "10:00",
-    jamSelesai: "12:00",
-    lokasi: "Lab Komputer 2",
-    aktif: true,
-    punyaSesi: false,
-  },
-];
+function errorMessage(error: unknown) {
+  const code =
+    typeof error === "object" && error && "code" in error
+      ? String(error.code)
+      : "unknown";
+  if (code.includes("permission-denied"))
+    return "Akses Firestore ditolak oleh Rules.";
+  if (code.includes("unavailable"))
+    return "Firestore tidak tersedia. Periksa koneksi internet.";
+  return `Operasi Firestore gagal (${code}).`;
+}
 
 function Field({
   label,
@@ -162,14 +109,12 @@ function Field({
   onChangeText,
   placeholder,
   keyboardType,
-  maxLength,
 }: {
   label: string;
   value: string;
   onChangeText: (value: string) => void;
   placeholder: string;
   keyboardType?: "default" | "numeric";
-  maxLength?: number;
 }) {
   return (
     <View style={styles.field}>
@@ -181,7 +126,6 @@ function Field({
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
         keyboardType={keyboardType}
-        maxLength={maxLength}
         style={styles.input}
       />
     </View>
@@ -202,35 +146,33 @@ function ChoiceChips({
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
-      {choices.length ? (
-        <View style={styles.choiceList}>
-          {choices.map((choice) => {
-            const selected = choice.id === selectedId;
-            return (
-              <Pressable
-                key={choice.id}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                onPress={() => onSelect(choice.id)}
-                style={[styles.choice, selected && styles.choiceSelected]}
+      <View style={styles.choiceList}>
+        {choices.length ? (
+          choices.map((choice) => (
+            <Pressable
+              key={choice.id}
+              accessibilityRole="button"
+              accessibilityState={{ selected: choice.id === selectedId }}
+              onPress={() => onSelect(choice.id)}
+              style={[
+                styles.choice,
+                choice.id === selectedId && styles.choiceSelected,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.choiceText,
+                  choice.id === selectedId && styles.choiceTextSelected,
+                ]}
               >
-                <Text
-                  style={[
-                    styles.choiceText,
-                    selected && styles.choiceTextSelected,
-                  ]}
-                >
-                  {choice.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      ) : (
-        <Text style={styles.helperText}>
-          Tambahkan data induk terlebih dahulu.
-        </Text>
-      )}
+                {choice.label}
+              </Text>
+            </Pressable>
+          ))
+        ) : (
+          <Text style={styles.helper}>Belum ada data induk.</Text>
+        )}
+      </View>
     </View>
   );
 }
@@ -238,40 +180,35 @@ function ChoiceChips({
 function RecordCard({
   title,
   detail,
-  status,
+  aktif,
   onEdit,
   onArchive,
-  archiveLabel,
+  actionLabel,
 }: {
   title: string;
   detail: string;
-  status: boolean;
+  aktif: boolean;
   onEdit: () => void;
   onArchive: () => void;
-  archiveLabel: string;
+  actionLabel: string;
 }) {
   return (
-    <View style={styles.recordCard}>
-      <View style={styles.recordTop}>
-        <Text style={styles.recordTitle}>{title}</Text>
-        <View
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <View style={styles.cardCopy}>
+          <Text style={styles.cardTitle}>{title}</Text>
+          <Text style={styles.cardDetail}>{detail}</Text>
+        </View>
+        <Text
           style={[
-            styles.recordStatus,
-            status ? styles.activeStatus : styles.inactiveStatus,
+            styles.badge,
+            aktif ? styles.badgeActive : styles.badgeInactive,
           ]}
         >
-          <Text
-            style={[
-              styles.recordStatusText,
-              status ? styles.activeStatusText : styles.inactiveStatusText,
-            ]}
-          >
-            {status ? "Aktif" : "Nonaktif"}
-          </Text>
-        </View>
+          {aktif ? "Aktif" : "Nonaktif"}
+        </Text>
       </View>
-      <Text style={styles.recordDetail}>{detail}</Text>
-      <View style={styles.recordActions}>
+      <View style={styles.cardActions}>
         <Pressable
           accessibilityRole="button"
           onPress={onEdit}
@@ -285,7 +222,7 @@ function RecordCard({
           style={[styles.actionButton, styles.secondaryAction]}
         >
           <Text style={[styles.actionText, styles.secondaryActionText]}>
-            {archiveLabel}
+            {actionLabel}
           </Text>
         </Pressable>
       </View>
@@ -294,21 +231,120 @@ function RecordCard({
 }
 
 export default function AsistenKelolaDataScreen() {
+  const { user, role } = useAuth();
   const [kind, setKind] = useState<DataKind>("praktikum");
-  const [praktikum, setPraktikum] = useState(initialPraktikum);
-  const [kelas, setKelas] = useState(initialKelas);
-  const [peserta, setPeserta] = useState(initialPeserta);
-  const [jadwal, setJadwal] = useState(initialJadwal);
+  const [praktikum, setPraktikum] = useState<PraktikumData[]>([]);
+  const [kelas, setKelas] = useState<KelasData[]>([]);
+  const [peserta, setPeserta] = useState<PesertaData[]>([]);
+  const [jadwal, setJadwal] = useState<JadwalData[]>([]);
+  const [sesi, setSesi] = useState<SesiData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [feedback, setFeedback] = useState("");
   const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [formKind, setFormKind] = useState<DataKind>("praktikum");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [formError, setFormError] = useState("");
-  const [pendingAction, setPendingAction] = useState<{
-    kind: DataKind;
-    id: string;
-  } | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(
+    null,
+  );
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (role !== "asisten" || !user) {
+      setLoading(false);
+      return undefined;
+    }
+
+    setLoading(true);
+    setError("");
+    const unsubscribers: (() => void)[] = [];
+    const participantUnsubscribers = new Map<string, () => void>();
+    const participantsByClass = new Map<string, PesertaData[]>();
+
+    const onError = (reason: unknown) => {
+      setError(errorMessage(reason));
+      setLoading(false);
+    };
+
+    unsubscribers.push(
+      listenCollection(
+        firestoreRefs.praktikum(),
+        (items) => {
+          setPraktikum(
+            items.map((item) => ({
+              id: item.id,
+              nama: item.nama,
+              deskripsi: item.deskripsi,
+              aktif: item.aktif,
+            })),
+          );
+          setLoading(false);
+        },
+        onError,
+      ),
+    );
+    unsubscribers.push(
+      listenCollection(
+        firestoreRefs.jadwal(),
+        (items) => setJadwal(items.map((item) => ({ ...item }))),
+        onError,
+      ),
+    );
+    unsubscribers.push(
+      listenCollection(
+        firestoreRefs.sesi(),
+        (items) => setSesi(items.map((item) => ({ ...item }))),
+        onError,
+      ),
+    );
+    unsubscribers.push(
+      listenCollection(
+        firestoreRefs.kelas(),
+        (items) => {
+          setKelas(items.map((item) => ({ ...item })));
+          const activeIds = new Set(items.map((item) => item.id));
+          for (const [kelasId, unsubscribe] of participantUnsubscribers) {
+            if (!activeIds.has(kelasId)) {
+              unsubscribe();
+              participantUnsubscribers.delete(kelasId);
+              participantsByClass.delete(kelasId);
+            }
+          }
+          for (const item of items) {
+            if (participantUnsubscribers.has(item.id)) continue;
+            participantUnsubscribers.set(
+              item.id,
+              listenCollection(
+                firestoreRefs.peserta(item.id),
+                (participantItems) => {
+                  participantsByClass.set(
+                    item.id,
+                    participantItems.map((participant) => ({
+                      id: participant.id,
+                      uid: participant.uid,
+                      kelasId: item.id,
+                      aktif: participant.aktif,
+                    })),
+                  );
+                  setPeserta(Array.from(participantsByClass.values()).flat());
+                },
+                onError,
+              ),
+            );
+          }
+        },
+        onError,
+      ),
+    );
+
+    return () => {
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+      participantUnsubscribers.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [role, user]);
 
   const classChoices = useMemo(
     () =>
@@ -323,373 +359,295 @@ export default function AsistenKelolaDataScreen() {
 
   const filtered = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("id-ID");
-    if (kind === "praktikum") {
+    if (kind === "praktikum")
       return praktikum.filter((item) =>
         `${item.nama} ${item.deskripsi}`
           .toLocaleLowerCase("id-ID")
           .includes(query),
       );
-    }
-    if (kind === "kelas") {
+    if (kind === "kelas")
       return kelas.filter((item) =>
         `${item.nama} ${praktikum.find((course) => course.id === item.praktikumId)?.nama ?? ""}`
           .toLocaleLowerCase("id-ID")
           .includes(query),
       );
-    }
-    if (kind === "peserta") {
+    if (kind === "peserta")
       return peserta.filter((item) =>
-        `${item.nama} ${item.nim} ${kelas.find((classItem) => classItem.id === item.kelasId)?.nama ?? ""}`
+        `${item.uid} ${kelas.find((entry) => entry.id === item.kelasId)?.nama ?? ""}`
           .toLocaleLowerCase("id-ID")
           .includes(query),
       );
-    }
     return jadwal.filter((item) =>
-      `${item.tanggal} ${item.lokasi} ${kelas.find((classItem) => classItem.id === item.kelasId)?.nama ?? ""}`
+      `${item.tanggal} ${item.lokasi} ${kelas.find((entry) => entry.id === item.kelasId)?.nama ?? ""}`
         .toLocaleLowerCase("id-ID")
         .includes(query),
     );
   }, [kind, jadwal, kelas, peserta, praktikum, search]);
+
+  function updateDraft(field: keyof Draft, value: string) {
+    setDraft((current) => ({ ...current, [field]: value }));
+  }
 
   function openForm(nextKind: DataKind, id?: string) {
     setFormKind(nextKind);
     setEditingId(id ?? null);
     setFormError("");
     if (nextKind === "praktikum") {
-      const current = praktikum.find((item) => item.id === id);
+      const item = praktikum.find((entry) => entry.id === id);
       setDraft({
         ...emptyDraft,
-        nama: current?.nama ?? "",
-        deskripsi: current?.deskripsi ?? "",
+        nama: item?.nama ?? "",
+        deskripsi: item?.deskripsi ?? "",
       });
     } else if (nextKind === "kelas") {
-      const current = kelas.find((item) => item.id === id);
+      const item = kelas.find((entry) => entry.id === id);
       setDraft({
         ...emptyDraft,
-        nama: current?.nama ?? "",
+        nama: item?.nama ?? "",
         praktikumId:
-          current?.praktikumId ??
-          praktikum.find((item) => item.aktif)?.id ??
-          "",
+          item?.praktikumId ?? praktikum.find((entry) => entry.aktif)?.id ?? "",
       });
     } else if (nextKind === "peserta") {
-      const current = peserta.find((item) => item.id === id);
+      const item = peserta.find((entry) => entry.id === id);
       setDraft({
         ...emptyDraft,
-        nama: current?.nama ?? "",
-        nim: current?.nim ?? "",
-        kelasId: current?.kelasId ?? classChoices[0]?.id ?? "",
+        uid: item?.uid ?? "",
+        kelasId: item?.kelasId ?? classChoices[0]?.id ?? "",
       });
     } else {
-      const current = jadwal.find((item) => item.id === id);
+      const item = jadwal.find((entry) => entry.id === id);
       setDraft({
         ...emptyDraft,
-        kelasId: current?.kelasId ?? classChoices[0]?.id ?? "",
-        pertemuanKe: current ? String(current.pertemuanKe) : "",
-        tanggal: current?.tanggal ?? "",
-        jamMulai: current?.jamMulai ?? "",
-        jamSelesai: current?.jamSelesai ?? "",
-        lokasi: current?.lokasi ?? "",
+        kelasId: item?.kelasId ?? classChoices[0]?.id ?? "",
+        pertemuanKe: item ? String(item.pertemuanKe) : "",
+        tanggal: item?.tanggal ?? "",
+        jamMulai: item?.jamMulai ?? "",
+        jamSelesai: item?.jamSelesai ?? "",
+        lokasi: item?.lokasi ?? "",
       });
     }
     setFormOpen(true);
   }
 
-  function updateDraft(field: keyof Draft, value: string) {
-    setDraft((current) => ({ ...current, [field]: value }));
-  }
-
-  function saveRecord() {
-    const name = draft.nama.trim();
-    const id = editingId ?? `${formKind}-${Date.now()}`;
-
-    if (formKind === "praktikum") {
-      if (!name) return setFormError("Nama praktikum wajib diisi.");
-      const value = {
-        id,
-        nama: name,
-        deskripsi: draft.deskripsi.trim(),
-        aktif: true,
-      };
-      setPraktikum((current) =>
-        editingId
-          ? current.map((item) =>
-              item.id === id ? { ...item, ...value, aktif: item.aktif } : item,
-            )
-          : [...current, value],
-      );
-    } else if (formKind === "kelas") {
-      if (!name || !draft.praktikumId)
-        return setFormError("Nama kelas dan praktikum wajib dipilih.");
-      const value = {
-        id,
-        nama: name,
-        praktikumId: draft.praktikumId,
-        aktif: true,
-      };
-      setKelas((current) =>
-        editingId
-          ? current.map((item) =>
-              item.id === id ? { ...item, ...value, aktif: item.aktif } : item,
-            )
-          : [...current, value],
-      );
-    } else if (formKind === "peserta") {
-      if (
-        !name ||
-        (draft.nim.trim() && !/^\d{6,12}$/.test(draft.nim.trim())) ||
-        !draft.kelasId
-      ) {
-        return setFormError(
-          "Nama dan kelas wajib diisi. NIM, jika diisi, harus 6–12 digit.",
+  async function saveRecord() {
+    try {
+      setBusy(true);
+      setFormError("");
+      if (formKind === "praktikum") {
+        if (!draft.nama.trim()) throw new Error("Nama praktikum wajib diisi.");
+        const value = {
+          nama: draft.nama.trim(),
+          deskripsi: draft.deskripsi.trim(),
+          aktif: true,
+          updatedAt: serverTimestamp(),
+        };
+        if (editingId)
+          await updateDocument(firestoreRefs.praktikumDoc(editingId), value);
+        else
+          await addDocument(firestoreRefs.praktikum(), {
+            ...value,
+            createdAt: serverTimestamp(),
+          });
+      } else if (formKind === "kelas") {
+        if (!draft.nama.trim() || !draft.praktikumId)
+          throw new Error("Nama kelas dan praktikum wajib diisi.");
+        const value = {
+          praktikumId: draft.praktikumId,
+          nama: draft.nama.trim(),
+          asistenUids: [user?.uid ?? ""],
+          aktif: true,
+          updatedAt: serverTimestamp(),
+        };
+        if (editingId)
+          await updateDocument(firestoreRefs.kelasDoc(editingId), value);
+        else
+          await addDocument(firestoreRefs.kelas(), {
+            ...value,
+            createdAt: serverTimestamp(),
+          });
+      } else if (formKind === "peserta") {
+        if (!draft.uid.trim() || !draft.kelasId)
+          throw new Error("UID Praktikan dan kelas wajib diisi.");
+        await setDocument(
+          firestoreRefs.pesertaDoc(draft.kelasId, draft.uid.trim()),
+          { uid: draft.uid.trim(), aktif: true, joinedAt: serverTimestamp() },
         );
-      }
-      const value = {
-        id,
-        nama: name,
-        nim: draft.nim.trim(),
-        kelasId: draft.kelasId,
-        aktif: true,
-        punyaRiwayat:
-          peserta.find((item) => item.id === id)?.punyaRiwayat ?? false,
-      };
-      setPeserta((current) =>
-        editingId
-          ? current.map((item) =>
-              item.id === id ? { ...item, ...value, aktif: item.aktif } : item,
-            )
-          : [...current, value],
-      );
-    } else {
-      const pertemuanKe = Number(draft.pertemuanKe);
-      const validTanggal = isValidDate(draft.tanggal);
-      const validJam = (value: string) =>
-        /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
-      if (
-        !draft.kelasId ||
-        !Number.isInteger(pertemuanKe) ||
-        pertemuanKe < 1 ||
-        !validTanggal ||
-        !validJam(draft.jamMulai) ||
-        !validJam(draft.jamSelesai) ||
-        draft.jamSelesai <= draft.jamMulai ||
-        !draft.lokasi.trim()
-      ) {
-        return setFormError(
-          "Lengkapi kelas, pertemuan, tanggal YYYY-MM-DD, jam HH:mm, dan lokasi.",
-        );
-      }
-      const value = {
-        id,
-        kelasId: draft.kelasId,
-        pertemuanKe,
-        tanggal: draft.tanggal,
-        jamMulai: draft.jamMulai,
-        jamSelesai: draft.jamSelesai,
-        lokasi: draft.lokasi.trim(),
-        aktif: true,
-        punyaSesi: jadwal.find((item) => item.id === id)?.punyaSesi ?? false,
-      };
-      setJadwal((current) =>
-        editingId
-          ? current.map((item) =>
-              item.id === id ? { ...item, ...value, aktif: item.aktif } : item,
-            )
-          : [...current, value],
-      );
-    }
-    setFormOpen(false);
-  }
-
-  function hasHistory(targetKind: DataKind, id: string) {
-    if (targetKind === "praktikum") {
-      const classIds = kelas
-        .filter((item) => item.praktikumId === id)
-        .map((item) => item.id);
-      return (
-        jadwal.some(
-          (item) => classIds.includes(item.kelasId) && item.punyaSesi,
-        ) ||
-        peserta.some(
-          (item) => classIds.includes(item.kelasId) && item.punyaRiwayat,
+      } else {
+        const pertemuanKe = Number(draft.pertemuanKe);
+        const validJam = (value: string) =>
+          /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+        if (
+          !draft.kelasId ||
+          !Number.isInteger(pertemuanKe) ||
+          pertemuanKe < 1 ||
+          !isValidDate(draft.tanggal) ||
+          !validJam(draft.jamMulai) ||
+          !validJam(draft.jamSelesai) ||
+          draft.jamSelesai <= draft.jamMulai ||
+          !draft.lokasi.trim()
         )
+          throw new Error(
+            "Lengkapi kelas, pertemuan, tanggal, jam, dan lokasi.",
+          );
+        const value = {
+          kelasId: draft.kelasId,
+          pertemuanKe,
+          tanggal: draft.tanggal,
+          jamMulai: draft.jamMulai,
+          jamSelesai: draft.jamSelesai,
+          lokasi: draft.lokasi.trim(),
+          aktif: true,
+        };
+        if (editingId)
+          await updateDocument(firestoreRefs.jadwalDoc(editingId), value);
+        else await addDocument(firestoreRefs.jadwal(), value);
+      }
+      setFormOpen(false);
+      setFeedback("Data berhasil disimpan.");
+    } catch (reason) {
+      setFormError(
+        reason instanceof Error ? reason.message : errorMessage(reason),
       );
+    } finally {
+      setBusy(false);
     }
-    if (targetKind === "kelas") {
-      return (
-        jadwal.some((item) => item.kelasId === id && item.punyaSesi) ||
-        peserta.some((item) => item.kelasId === id && item.punyaRiwayat)
-      );
-    }
-    if (targetKind === "peserta")
-      return peserta.find((item) => item.id === id)?.punyaRiwayat ?? false;
-    return jadwal.find((item) => item.id === id)?.punyaSesi ?? false;
   }
 
-  function archiveLabel(targetKind: DataKind, id: string, aktif: boolean) {
-    if (!aktif) return "Aktifkan";
-    return hasHistory(targetKind, id) ? "Nonaktifkan" : "Hapus";
-  }
-
-  function confirmAction() {
-    if (!pendingAction) return;
-    const { kind: targetKind, id } = pendingAction;
-    const archived = hasHistory(targetKind, id);
-    const shouldReactivate = pendingLabel === "Aktifkan";
-    if (targetKind === "praktikum") {
-      setPraktikum((items) =>
-        shouldReactivate
-          ? items.map((item) =>
-              item.id === id ? { ...item, aktif: true } : item,
-            )
-          : archived
-            ? items.map((item) =>
-                item.id === id ? { ...item, aktif: false } : item,
-              )
-            : items.filter((item) => item.id !== id),
+  async function findHistory(targetKind: DataKind, id: string) {
+    const sessions = (await readCollection(firestoreRefs.sesi())) as SesiData[];
+    let targetSessionIds: string[];
+    if (targetKind === "jadwal")
+      targetSessionIds = sessions
+        .filter((item) => item.jadwalId === id)
+        .map((item) => item.id);
+    else if (targetKind === "kelas") {
+      const scheduleIds = new Set(
+        jadwal.filter((item) => item.kelasId === id).map((item) => item.id),
       );
-      if (!archived && !shouldReactivate) {
-        const classIds = kelas
-          .filter((item) => item.praktikumId === id)
-          .map((item) => item.id);
-        setKelas((items) => items.filter((item) => item.praktikumId !== id));
-        setPeserta((items) =>
-          items.filter((item) => !classIds.includes(item.kelasId)),
-        );
-        setJadwal((items) =>
-          items.filter((item) => !classIds.includes(item.kelasId)),
-        );
-      } else if (archived && !shouldReactivate) {
-        const classIds = kelas
-          .filter((item) => item.praktikumId === id)
-          .map((item) => item.id);
-        setKelas((items) =>
-          items.map((item) =>
-            classIds.includes(item.id) ? { ...item, aktif: false } : item,
-          ),
-        );
-        setPeserta((items) =>
-          items.map((item) =>
-            classIds.includes(item.kelasId) ? { ...item, aktif: false } : item,
-          ),
-        );
-        setJadwal((items) =>
-          items.map((item) =>
-            classIds.includes(item.kelasId) ? { ...item, aktif: false } : item,
-          ),
-        );
-      }
-    } else if (targetKind === "kelas") {
-      setKelas((items) =>
-        shouldReactivate
-          ? items.map((item) =>
-              item.id === id ? { ...item, aktif: true } : item,
-            )
-          : archived
-            ? items.map((item) =>
-                item.id === id ? { ...item, aktif: false } : item,
-              )
-            : items.filter((item) => item.id !== id),
+      targetSessionIds = sessions
+        .filter(
+          (item) =>
+            item.kelasId === id ||
+            (item.jadwalId && scheduleIds.has(item.jadwalId)),
+        )
+        .map((item) => item.id);
+    } else if (targetKind === "praktikum") {
+      const classIds = new Set(
+        kelas.filter((item) => item.praktikumId === id).map((item) => item.id),
       );
-      if (!archived && !shouldReactivate) {
-        setPeserta((items) => items.filter((item) => item.kelasId !== id));
-        setJadwal((items) => items.filter((item) => item.kelasId !== id));
-      } else if (archived && !shouldReactivate) {
-        setPeserta((items) =>
-          items.map((item) =>
-            item.kelasId === id ? { ...item, aktif: false } : item,
-          ),
-        );
-        setJadwal((items) =>
-          items.map((item) =>
-            item.kelasId === id ? { ...item, aktif: false } : item,
-          ),
-        );
-      }
-    } else if (targetKind === "peserta") {
-      setPeserta((items) =>
-        shouldReactivate
-          ? items.map((item) =>
-              item.id === id ? { ...item, aktif: true } : item,
-            )
-          : archived
-            ? items.map((item) =>
-                item.id === id ? { ...item, aktif: false } : item,
-              )
-            : items.filter((item) => item.id !== id),
+      const scheduleIds = new Set(
+        jadwal
+          .filter((item) => classIds.has(item.kelasId))
+          .map((item) => item.id),
       );
+      targetSessionIds = sessions
+        .filter(
+          (item) =>
+            (item.kelasId && classIds.has(item.kelasId)) ||
+            (item.jadwalId && scheduleIds.has(item.jadwalId)),
+        )
+        .map((item) => item.id);
     } else {
-      setJadwal((items) =>
-        shouldReactivate
-          ? items.map((item) =>
-              item.id === id ? { ...item, aktif: true } : item,
-            )
-          : archived
-            ? items.map((item) =>
-                item.id === id ? { ...item, aktif: false } : item,
-              )
-            : items.filter((item) => item.id !== id),
+      const participant = peserta.find((item) => item.id === id);
+      const classSessions = sessions.filter(
+        (item) => item.kelasId === participant?.kelasId,
       );
+      for (const item of classSessions) {
+        const [attendance, request] = await Promise.all([
+          readDocument(
+            firestoreRefs.presensiDoc(item.id, participant?.uid ?? ""),
+          ),
+          readDocument(
+            firestoreRefs.pengajuanIzinDoc(item.id, participant?.uid ?? ""),
+          ),
+        ]);
+        if (attendance || request) return true;
+      }
+      return false;
     }
-    setPendingAction(null);
+    return targetSessionIds.length > 0;
   }
 
-  const activeCount =
-    kind === "praktikum"
-      ? praktikum.filter((item) => item.aktif).length
-      : kind === "kelas"
-        ? kelas.filter((item) => item.aktif).length
-        : kind === "peserta"
-          ? peserta.filter((item) => item.aktif).length
-          : jadwal.filter((item) => item.aktif).length;
+  async function prepareArchive(
+    targetKind: DataKind,
+    id: string,
+    aktif: boolean,
+  ) {
+    if (!aktif) {
+      setPendingAction({ kind: targetKind, id, mode: "aktifkan" });
+      return;
+    }
+    try {
+      setBusy(true);
+      const hasHistory = await findHistory(targetKind, id);
+      setPendingAction({
+        kind: targetKind,
+        id,
+        mode: hasHistory ? "nonaktifkan" : "hapus",
+      });
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmAction() {
+    if (!pendingAction) return;
+    const { kind: targetKind, id, mode } = pendingAction;
+    try {
+      setBusy(true);
+      if (targetKind === "praktikum") {
+        if (mode === "hapus")
+          await removeDocument(firestoreRefs.praktikumDoc(id));
+        else
+          await updateDocument(firestoreRefs.praktikumDoc(id), {
+            aktif: mode === "aktifkan",
+            updatedAt: serverTimestamp(),
+          });
+      } else if (targetKind === "kelas") {
+        if (mode === "hapus") await removeDocument(firestoreRefs.kelasDoc(id));
+        else
+          await updateDocument(firestoreRefs.kelasDoc(id), {
+            aktif: mode === "aktifkan",
+            updatedAt: serverTimestamp(),
+          });
+      } else if (targetKind === "jadwal") {
+        if (mode === "hapus") await removeDocument(firestoreRefs.jadwalDoc(id));
+        else
+          await updateDocument(firestoreRefs.jadwalDoc(id), {
+            aktif: mode === "aktifkan",
+          });
+      } else {
+        const item = peserta.find((entry) => entry.id === id);
+        if (item) {
+          if (mode === "hapus")
+            await removeDocument(
+              firestoreRefs.pesertaDoc(item.kelasId, item.uid),
+            );
+          else
+            await updateDocument(
+              firestoreRefs.pesertaDoc(item.kelasId, item.uid),
+              { aktif: mode === "aktifkan" },
+            );
+        }
+      }
+      setFeedback(
+        `Data berhasil ${mode === "hapus" ? "dihapus" : mode === "aktifkan" ? "diaktifkan" : "dinonaktifkan"}.`,
+      );
+      setPendingAction(null);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function renderRecords() {
-    if (kind === "praktikum") {
+    if (kind === "praktikum")
       return praktikum
         .filter((item) =>
           `${item.nama} ${item.deskripsi}`
-            .toLocaleLowerCase("id-ID")
-            .includes(search.trim().toLocaleLowerCase("id-ID")),
-        )
-        .map((item) => {
-          return (
-            <RecordCard
-              key={item.id}
-              title={item.nama}
-              detail={`${item.deskripsi || "Tanpa deskripsi"} · ${kelas.filter((entry) => entry.praktikumId === item.id).length} kelas`}
-              status={item.aktif}
-              onEdit={() => openForm("praktikum", item.id)}
-              archiveLabel={archiveLabel("praktikum", item.id, item.aktif)}
-              onArchive={() =>
-                setPendingAction({ kind: "praktikum", id: item.id })
-              }
-            />
-          );
-        });
-    }
-    if (kind === "kelas") {
-      return kelas
-        .filter((item) =>
-          `${item.nama} ${praktikum.find((course) => course.id === item.praktikumId)?.nama ?? ""}`
-            .toLocaleLowerCase("id-ID")
-            .includes(search.trim().toLocaleLowerCase("id-ID")),
-        )
-        .map((item) => (
-          <RecordCard
-            key={item.id}
-            title={`Kelas ${item.nama}`}
-            detail={`${praktikum.find((course) => course.id === item.praktikumId)?.nama ?? "Praktikum tidak ditemukan"} · ${peserta.filter((entry) => entry.kelasId === item.id && entry.aktif).length} peserta · ${jadwal.filter((entry) => entry.kelasId === item.id && entry.aktif).length} jadwal`}
-            status={item.aktif}
-            onEdit={() => openForm("kelas", item.id)}
-            archiveLabel={archiveLabel("kelas", item.id, item.aktif)}
-            onArchive={() => setPendingAction({ kind: "kelas", id: item.id })}
-          />
-        ));
-    }
-    if (kind === "peserta") {
-      return peserta
-        .filter((item) =>
-          `${item.nama} ${item.nim} ${kelas.find((entry) => entry.id === item.kelasId)?.nama ?? ""}`
             .toLocaleLowerCase("id-ID")
             .includes(search.trim().toLocaleLowerCase("id-ID")),
         )
@@ -697,63 +655,94 @@ export default function AsistenKelolaDataScreen() {
           <RecordCard
             key={item.id}
             title={item.nama}
-            detail={`NIM ${item.nim} · Kelas ${kelas.find((entry) => entry.id === item.kelasId)?.nama ?? "-"}`}
-            status={item.aktif}
-            onEdit={() => openForm("peserta", item.id)}
-            archiveLabel={archiveLabel("peserta", item.id, item.aktif)}
-            onArchive={() => setPendingAction({ kind: "peserta", id: item.id })}
+            detail={item.deskripsi || "Tanpa deskripsi"}
+            aktif={item.aktif}
+            onEdit={() => openForm("praktikum", item.id)}
+            onArchive={() => prepareArchive("praktikum", item.id, item.aktif)}
+            actionLabel={item.aktif ? "Kelola" : "Aktifkan"}
           />
         ));
-    }
+    if (kind === "kelas")
+      return kelas
+        .filter((item) =>
+          `${item.nama} ${item.praktikumId}`
+            .toLocaleLowerCase("id-ID")
+            .includes(search.trim().toLocaleLowerCase("id-ID")),
+        )
+        .map((item) => (
+          <RecordCard
+            key={item.id}
+            title={`Kelas ${item.nama}`}
+            detail={`Praktikum ${item.praktikumId} · ${item.asistenUids.length} Asisten`}
+            aktif={item.aktif}
+            onEdit={() => openForm("kelas", item.id)}
+            onArchive={() => prepareArchive("kelas", item.id, item.aktif)}
+            actionLabel={item.aktif ? "Kelola" : "Aktifkan"}
+          />
+        ));
+    if (kind === "peserta")
+      return peserta
+        .filter((item) =>
+          `${item.uid} ${item.kelasId}`
+            .toLocaleLowerCase("id-ID")
+            .includes(search.trim().toLocaleLowerCase("id-ID")),
+        )
+        .map((item) => (
+          <RecordCard
+            key={item.id}
+            title={item.uid}
+            detail={`Kelas ${item.kelasId}`}
+            aktif={item.aktif}
+            onEdit={() => openForm("peserta", item.id)}
+            onArchive={() => prepareArchive("peserta", item.id, item.aktif)}
+            actionLabel={item.aktif ? "Kelola" : "Aktifkan"}
+          />
+        ));
     return jadwal
       .filter((item) =>
-        `${item.tanggal} ${item.lokasi} ${kelas.find((entry) => entry.id === item.kelasId)?.nama ?? ""}`
+        `${item.tanggal} ${item.lokasi} ${item.kelasId}`
           .toLocaleLowerCase("id-ID")
           .includes(search.trim().toLocaleLowerCase("id-ID")),
       )
-      .map((item) => {
-        const classItem = kelas.find((entry) => entry.id === item.kelasId);
-        return (
-          <RecordCard
-            key={item.id}
-            title={`Pertemuan ${item.pertemuanKe} · ${item.tanggal}`}
-            detail={`Kelas ${classItem?.nama ?? "-"} · ${praktikum.find((course) => course.id === classItem?.praktikumId)?.nama ?? "Praktikum"} · ${item.jamMulai}–${item.jamSelesai} · ${item.lokasi}`}
-            status={item.aktif}
-            onEdit={() => openForm("jadwal", item.id)}
-            archiveLabel={archiveLabel("jadwal", item.id, item.aktif)}
-            onArchive={() => setPendingAction({ kind: "jadwal", id: item.id })}
-          />
-        );
-      });
+      .map((item) => (
+        <RecordCard
+          key={item.id}
+          title={`Pertemuan ${item.pertemuanKe} · ${item.tanggal}`}
+          detail={`Kelas ${item.kelasId} · ${item.jamMulai}–${item.jamSelesai} · ${item.lokasi}`}
+          aktif={item.aktif}
+          onEdit={() => openForm("jadwal", item.id)}
+          onArchive={() => prepareArchive("jadwal", item.id, item.aktif)}
+          actionLabel={item.aktif ? "Kelola" : "Aktifkan"}
+        />
+      ));
   }
 
-  function renderFormFields() {
-    if (formKind === "praktikum") {
+  function renderFields() {
+    if (formKind === "praktikum")
       return (
         <>
           <Field
             label="Nama praktikum"
             value={draft.nama}
             onChangeText={(value) => updateDraft("nama", value)}
-            placeholder="Contoh: Pemrograman Web"
+            placeholder="Nama praktikum"
           />
           <Field
             label="Deskripsi"
             value={draft.deskripsi}
             onChangeText={(value) => updateDraft("deskripsi", value)}
-            placeholder="Ringkasan praktikum"
+            placeholder="Deskripsi"
           />
         </>
       );
-    }
-    if (formKind === "kelas") {
+    if (formKind === "kelas")
       return (
         <>
           <Field
             label="Nama kelas"
             value={draft.nama}
             onChangeText={(value) => updateDraft("nama", value)}
-            placeholder="Contoh: A"
+            placeholder="A"
           />
           <ChoiceChips
             label="Praktikum"
@@ -765,23 +754,14 @@ export default function AsistenKelolaDataScreen() {
           />
         </>
       );
-    }
-    if (formKind === "peserta") {
+    if (formKind === "peserta")
       return (
         <>
           <Field
-            label="Nama peserta"
-            value={draft.nama}
-            onChangeText={(value) => updateDraft("nama", value)}
-            placeholder="Nama lengkap"
-          />
-          <Field
-            label="NIM (opsional)"
-            value={draft.nim}
-            onChangeText={(value) => updateDraft("nim", value)}
-            placeholder="6–12 digit"
-            keyboardType="numeric"
-            maxLength={12}
+            label="UID Praktikan"
+            value={draft.uid}
+            onChangeText={(value) => updateDraft("uid", value)}
+            placeholder="UID Firebase Auth"
           />
           <ChoiceChips
             label="Kelas"
@@ -791,7 +771,6 @@ export default function AsistenKelolaDataScreen() {
           />
         </>
       );
-    }
     return (
       <>
         <ChoiceChips
@@ -804,176 +783,149 @@ export default function AsistenKelolaDataScreen() {
           label="Pertemuan ke"
           value={draft.pertemuanKe}
           onChangeText={(value) => updateDraft("pertemuanKe", value)}
-          placeholder="Contoh: 3"
+          placeholder="1"
           keyboardType="numeric"
         />
         <Field
-          label="Tanggal"
+          label="Tanggal YYYY-MM-DD"
           value={draft.tanggal}
           onChangeText={(value) => updateDraft("tanggal", value)}
-          placeholder="YYYY-MM-DD"
-          maxLength={10}
+          placeholder="2026-11-14"
         />
-        <View style={styles.inlineFields}>
-          <View style={styles.inlineField}>
-            <Field
-              label="Mulai"
-              value={draft.jamMulai}
-              onChangeText={(value) => updateDraft("jamMulai", value)}
-              placeholder="08:00"
-              maxLength={5}
-            />
-          </View>
-          <View style={styles.inlineField}>
-            <Field
-              label="Selesai"
-              value={draft.jamSelesai}
-              onChangeText={(value) => updateDraft("jamSelesai", value)}
-              placeholder="10:00"
-              maxLength={5}
-            />
-          </View>
+        <View style={styles.inline}>
+          <Field
+            label="Mulai"
+            value={draft.jamMulai}
+            onChangeText={(value) => updateDraft("jamMulai", value)}
+            placeholder="08:00"
+          />
+          <Field
+            label="Selesai"
+            value={draft.jamSelesai}
+            onChangeText={(value) => updateDraft("jamSelesai", value)}
+            placeholder="10:00"
+          />
         </View>
         <Field
           label="Lokasi"
           value={draft.lokasi}
           onChangeText={(value) => updateDraft("lokasi", value)}
-          placeholder="Contoh: Lab Komputer 1"
+          placeholder="Laboratorium"
         />
       </>
     );
   }
 
-  const pendingIsHistory = pendingAction
-    ? hasHistory(pendingAction.kind, pendingAction.id)
-    : false;
-  const pendingLabel = pendingAction
-    ? archiveLabel(
-        pendingAction.kind,
-        pendingAction.id,
-        pendingAction.kind === "praktikum"
-          ? (praktikum.find((item) => item.id === pendingAction.id)?.aktif ??
-              false)
-          : pendingAction.kind === "kelas"
-            ? (kelas.find((item) => item.id === pendingAction.id)?.aktif ??
-              false)
-            : pendingAction.kind === "peserta"
-              ? (peserta.find((item) => item.id === pendingAction.id)?.aktif ??
-                false)
-              : (jadwal.find((item) => item.id === pendingAction.id)?.aktif ??
-                false),
-      )
-    : "";
+  const pendingText =
+    pendingAction?.mode === "hapus"
+      ? "Hapus"
+      : pendingAction?.mode === "aktifkan"
+        ? "Aktifkan"
+        : "Nonaktifkan";
+  const activeCount = (
+    kind === "praktikum"
+      ? praktikum
+      : kind === "kelas"
+        ? kelas
+        : kind === "peserta"
+          ? peserta
+          : jadwal
+  ).filter((item) => item.aktif).length;
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.topBar}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Kembali ke jadwal"
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
-            <Text style={styles.backArrow}>‹</Text>
-          </Pressable>
-          <Text style={styles.topBarLabel}>AREA ASISTEN</Text>
-          <View style={styles.roleMark}>
-            <Text style={styles.roleMarkText}>A</Text>
-          </View>
-        </View>
-
+      <ScrollView contentContainerStyle={styles.content}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.back()}
+          style={styles.back}
+        >
+          <Text style={styles.backArrow}>‹</Text>
+          <Text style={styles.backText}>Kembali</Text>
+        </Pressable>
+        <Text style={styles.eyebrow}>AREA ASISTEN</Text>
         <Text style={styles.title}>Kelola Data</Text>
         <Text style={styles.subtitle}>
-          Praktikum, kelas, peserta, dan jadwal.
+          Data tersinkron dari Cloud Firestore.
         </Text>
-
+        {error ? (
+          <Text accessibilityRole="alert" style={styles.errorBanner}>
+            {error}
+          </Text>
+        ) : null}
+        {feedback ? (
+          <Text accessibilityRole="alert" style={styles.feedback}>
+            {feedback}
+          </Text>
+        ) : null}
         <View style={styles.summary}>
-          <View>
-            <Text style={styles.summaryEyebrow}>DATA AKTIF</Text>
-            <Text style={styles.summaryCount}>{activeCount}</Text>
-          </View>
+          <Text style={styles.summaryNumber}>{activeCount}</Text>
           <Text style={styles.summaryLabel}>
-            {TABS.find((item) => item.id === kind)?.label}
+            data aktif · {TABS.find((item) => item.id === kind)?.label}
           </Text>
         </View>
-
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.tabs}
         >
-          {TABS.map((tab) => {
-            const selected = kind === tab.id;
-            return (
-              <Pressable
-                key={tab.id}
-                accessibilityRole="tab"
-                accessibilityState={{ selected }}
-                onPress={() => {
-                  setKind(tab.id);
-                  setSearch("");
-                }}
-                style={[styles.tab, selected && styles.tabSelected]}
+          {TABS.map((tab) => (
+            <Pressable
+              key={tab.id}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: kind === tab.id }}
+              onPress={() => {
+                setKind(tab.id);
+                setSearch("");
+              }}
+              style={[styles.tab, kind === tab.id && styles.tabSelected]}
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  kind === tab.id && styles.tabTextSelected,
+                ]}
               >
-                <Text
-                  style={[styles.tabText, selected && styles.tabTextSelected]}
-                >
-                  {tab.label}
-                </Text>
-              </Pressable>
-            );
-          })}
+                {tab.label}
+              </Text>
+            </Pressable>
+          ))}
         </ScrollView>
-
-        <View style={styles.listHeading}>
-          <View style={styles.listTitleBlock}>
-            <Text style={styles.listTitle}>
-              Daftar{" "}
-              {TABS.find((item) => item.id === kind)?.label.toLocaleLowerCase(
-                "id-ID",
-              )}
+        <View style={styles.headingRow}>
+          <View style={styles.cardCopy}>
+            <Text style={styles.sectionTitle}>
+              {TABS.find((item) => item.id === kind)?.label}
             </Text>
-            <Text style={styles.listSubtitle}>
-              {filtered.length} data ditemukan
-            </Text>
+            <Text style={styles.helper}>{filtered.length} data</Text>
           </View>
           <Pressable
             accessibilityRole="button"
             onPress={() => openForm(kind)}
-            style={({ pressed }) => [
-              styles.addButton,
-              pressed && styles.pressed,
-            ]}
+            style={styles.addButton}
           >
-            <Text style={styles.addButtonText}>＋ Tambah</Text>
+            <Text style={styles.addText}>＋ Tambah</Text>
           </Pressable>
         </View>
-
         <TextInput
           accessibilityLabel="Cari data"
           value={search}
           onChangeText={setSearch}
-          placeholder={`Cari ${TABS.find((item) => item.id === kind)?.label.toLocaleLowerCase("id-ID")}...`}
+          placeholder="Cari data..."
           placeholderTextColor={colors.textMuted}
-          style={styles.searchInput}
+          style={styles.input}
         />
-
-        {filtered.length ? (
+        {loading ? (
+          <View style={styles.state}>
+            <ActivityIndicator color={colors.primary} />
+            <Text style={styles.helper}>Memuat data Firestore...</Text>
+          </View>
+        ) : filtered.length ? (
           renderRecords()
         ) : (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyMark}>—</Text>
-            <Text style={styles.emptyTitle}>
-              {search ? "Data tidak ditemukan" : "Belum ada data"}
-            </Text>
-            <Text style={styles.emptyDescription}>
-              {search
-                ? "Coba kata kunci lain."
-                : `Tambahkan ${TABS.find((item) => item.id === kind)?.label.toLocaleLowerCase("id-ID")} pertama.`}
+          <View style={styles.state}>
+            <Text style={styles.emptyTitle}>Belum ada data</Text>
+            <Text style={styles.helper}>
+              Data yang dibuat akan muncul di sini.
             </Text>
           </View>
         )}
@@ -985,95 +937,77 @@ export default function AsistenKelolaDataScreen() {
         animationType="slide"
         onRequestClose={() => setFormOpen(false)}
       >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.formCard}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalEyebrow}>
-                  {editingId ? "UBAH DATA" : "DATA BARU"}
-                </Text>
-                <Text style={styles.modalTitle}>
-                  {editingId ? "Ubah" : "Tambah"}{" "}
-                  {TABS.find(
-                    (item) => item.id === formKind,
-                  )?.label.toLocaleLowerCase("id-ID")}
-                </Text>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Tutup"
-                onPress={() => setFormOpen(false)}
-                style={styles.closeButton}
-              >
-                <Text style={styles.closeButtonText}>×</Text>
-              </Pressable>
-            </View>
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.formFields}
-            >
-              {renderFormFields()}
+        <View style={styles.overlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.eyebrow}>
+              {editingId ? "UBAH DATA" : "DATA BARU"}
+            </Text>
+            <Text style={styles.modalTitle}>
+              {editingId ? "Ubah" : "Tambah"}{" "}
+              {TABS.find((item) => item.id === formKind)?.label}
+            </Text>
+            <ScrollView contentContainerStyle={styles.form}>
+              {renderFields()}
               {formError ? (
                 <Text style={styles.errorText}>{formError}</Text>
               ) : null}
-              <View style={styles.modalActions}>
+              <View style={styles.inline}>
                 <Pressable
                   accessibilityRole="button"
                   onPress={() => setFormOpen(false)}
-                  style={[styles.modalButton, styles.cancelButton]}
+                  style={[styles.modalButton, styles.cancel]}
                 >
-                  <Text style={styles.cancelButtonText}>Batal</Text>
+                  <Text>Batal</Text>
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
+                  disabled={busy}
                   onPress={saveRecord}
-                  style={[styles.modalButton, styles.saveButton]}
+                  style={[styles.modalButton, styles.save]}
                 >
-                  <Text style={styles.saveButtonText}>Simpan</Text>
+                  <Text style={styles.saveText}>
+                    {busy ? "Menyimpan..." : "Simpan"}
+                  </Text>
                 </Pressable>
               </View>
             </ScrollView>
           </View>
         </View>
       </Modal>
-
       <Modal
         visible={!!pendingAction}
         transparent
         animationType="fade"
         onRequestClose={() => setPendingAction(null)}
       >
-        <View style={styles.modalBackdrop}>
+        <View style={styles.overlay}>
           <View style={styles.confirmCard}>
-            <Text style={styles.modalEyebrow}>KONFIRMASI</Text>
-            <Text style={styles.modalTitle}>{pendingLabel} data?</Text>
+            <Text style={styles.eyebrow}>KONFIRMASI</Text>
+            <Text style={styles.modalTitle}>{pendingText} data?</Text>
             <Text style={styles.confirmText}>
-              {pendingLabel === "Aktifkan"
-                ? "Data akan diaktifkan kembali. Data turunan tetap mengikuti statusnya masing-masing."
-                : pendingIsHistory
-                  ? "Data memiliki sesi atau riwayat. Data akan dinonaktifkan agar riwayat tetap tersedia."
-                  : "Data ini dan data turunannya yang belum memiliki riwayat akan dihapus."}
+              {pendingAction?.mode === "hapus"
+                ? "Tidak ada sesi terkait. Data akan dihapus."
+                : pendingAction?.mode === "aktifkan"
+                  ? "Data akan diaktifkan kembali."
+                  : "Data memiliki sesi atau riwayat. Data akan dinonaktifkan agar riwayat tetap tersedia."}
             </Text>
-            <View style={styles.modalActions}>
+            <View style={styles.inline}>
               <Pressable
                 accessibilityRole="button"
                 onPress={() => setPendingAction(null)}
-                style={[styles.modalButton, styles.cancelButton]}
+                style={[styles.modalButton, styles.cancel]}
               >
-                <Text style={styles.cancelButtonText}>Batal</Text>
+                <Text>Batal</Text>
               </Pressable>
               <Pressable
                 accessibilityRole="button"
+                disabled={busy}
                 onPress={confirmAction}
-                style={[
-                  styles.modalButton,
-                  pendingLabel === "Hapus"
-                    ? styles.dangerButton
-                    : styles.saveButton,
-                ]}
+                style={[styles.modalButton, styles.save]}
               >
-                <Text style={styles.saveButtonText}>{pendingLabel}</Text>
+                <Text style={styles.saveText}>
+                  {busy ? "Memproses..." : pendingText}
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -1085,303 +1019,191 @@ export default function AsistenKelolaDataScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.bg },
-  content: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 36 },
-  topBar: { flexDirection: "row", alignItems: "center", marginBottom: 24 },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+  content: { padding: 20, paddingBottom: 40 },
+  back: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.surface,
+    gap: 7,
+    marginBottom: 18,
   },
-  backArrow: { color: colors.text, fontSize: 30, lineHeight: 34 },
-  topBarLabel: {
-    flex: 1,
-    marginLeft: 12,
-    color: colors.textMuted,
+  backArrow: { color: colors.primary, fontSize: 28 },
+  backText: { color: colors.text, fontWeight: "700" },
+  eyebrow: {
+    color: colors.primary,
     fontSize: 10,
     fontWeight: "800",
-    letterSpacing: 1.2,
+    letterSpacing: 1,
   },
-  roleMark: {
-    width: 32,
-    height: 32,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.highlight,
-  },
-  roleMarkText: { color: colors.text, fontSize: 12, fontWeight: "800" },
-  title: {
-    color: colors.text,
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: "800",
-  },
+  title: { color: colors.text, fontSize: 28, fontWeight: "800", marginTop: 6 },
   subtitle: {
     color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
     marginTop: 5,
-    marginBottom: 20,
+    marginBottom: 18,
+  },
+  errorBanner: {
+    color: colors.bg,
+    backgroundColor: colors.primary,
+    padding: 11,
+    borderRadius: 10,
+    fontSize: 12,
+    marginBottom: 10,
+  },
+  feedback: {
+    color: colors.text,
+    backgroundColor: colors.highlight,
+    padding: 11,
+    borderRadius: 10,
+    fontSize: 12,
+    marginBottom: 10,
   },
   summary: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    padding: 18,
-    borderRadius: 16,
-    backgroundColor: colors.text,
-    marginBottom: 22,
-  },
-  summaryEyebrow: {
-    color: "rgba(254,255,224,0.72)",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1,
-  },
-  summaryCount: {
-    color: colors.surface,
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: "800",
-    marginTop: 4,
-  },
-  summaryLabel: {
-    color: colors.text,
-    backgroundColor: colors.highlight,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    gap: 10,
+    padding: 16,
     borderRadius: 14,
-    fontSize: 11,
-    fontWeight: "800",
+    backgroundColor: colors.text,
+    marginBottom: 16,
   },
-  tabs: { gap: 8, paddingBottom: 20 },
+  summaryNumber: { color: colors.surface, fontSize: 26, fontWeight: "800" },
+  summaryLabel: { color: colors.highlight, fontSize: 12, fontWeight: "700" },
+  tabs: { gap: 8, paddingBottom: 18 },
   tab: {
-    minHeight: 38,
-    justifyContent: "center",
-    paddingHorizontal: 14,
-    borderRadius: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.bg,
+    borderRadius: 10,
   },
   tabSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
   tabText: { color: colors.textMuted, fontSize: 12, fontWeight: "700" },
   tabTextSelected: { color: colors.bg },
-  listHeading: {
+  headingRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     gap: 10,
-    marginBottom: 13,
+    marginBottom: 10,
   },
-  listTitleBlock: { flex: 1 },
-  listTitle: { color: colors.text, fontSize: 18, fontWeight: "800" },
-  listSubtitle: { color: colors.textMuted, fontSize: 12, marginTop: 4 },
+  sectionTitle: { color: colors.text, fontSize: 18, fontWeight: "800" },
+  cardCopy: { flex: 1 },
   addButton: {
-    minHeight: 40,
-    justifyContent: "center",
-    paddingHorizontal: 13,
-    borderRadius: 12,
     backgroundColor: colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
   },
-  addButtonText: { color: colors.bg, fontSize: 12, fontWeight: "800" },
-  searchInput: {
-    minHeight: 46,
+  addText: { color: colors.bg, fontSize: 12, fontWeight: "800" },
+  input: {
+    minHeight: 44,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
+    borderRadius: 10,
+    paddingHorizontal: 12,
     color: colors.text,
-    fontSize: 14,
-    marginBottom: 13,
+    marginBottom: 12,
   },
-  recordCard: {
-    padding: 15,
-    marginBottom: 10,
-    borderRadius: 14,
+  card: {
+    padding: 14,
+    borderRadius: 13,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
+    marginBottom: 10,
   },
-  recordTop: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  recordTitle: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 15,
-    lineHeight: 21,
+  cardHeader: { flexDirection: "row", gap: 8, alignItems: "flex-start" },
+  cardTitle: { color: colors.text, fontSize: 14, fontWeight: "800" },
+  cardDetail: { color: colors.textMuted, fontSize: 12, marginTop: 5 },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    fontSize: 10,
     fontWeight: "800",
   },
-  recordStatus: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 9 },
-  activeStatus: { backgroundColor: colors.highlight },
-  inactiveStatus: { backgroundColor: "rgba(23,69,74,0.1)" },
-  recordStatusText: { fontSize: 10, fontWeight: "800" },
-  activeStatusText: { color: colors.text },
-  inactiveStatusText: { color: colors.textMuted },
-  recordDetail: {
-    color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 7,
-  },
-  recordActions: { flexDirection: "row", gap: 8, marginTop: 13 },
+  badgeActive: { backgroundColor: colors.highlight, color: colors.text },
+  badgeInactive: { backgroundColor: colors.border, color: colors.textMuted },
+  cardActions: { flexDirection: "row", gap: 8, marginTop: 12 },
   actionButton: {
-    minHeight: 36,
-    justifyContent: "center",
     paddingHorizontal: 12,
-    borderRadius: 10,
+    paddingVertical: 9,
+    borderRadius: 9,
     backgroundColor: colors.text,
   },
   actionText: { color: colors.bg, fontSize: 11, fontWeight: "700" },
   secondaryAction: {
+    backgroundColor: colors.bg,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.bg,
   },
   secondaryActionText: { color: colors.text },
-  pressed: { opacity: 0.75 },
-  emptyState: {
+  state: {
     alignItems: "center",
-    paddingVertical: 38,
-    paddingHorizontal: 22,
-    borderRadius: 14,
+    padding: 32,
     backgroundColor: colors.surface,
+    borderRadius: 13,
+    gap: 8,
   },
-  emptyMark: { color: colors.primary, fontSize: 28, fontWeight: "800" },
-  emptyTitle: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: "800",
-    marginTop: 8,
-  },
-  emptyDescription: {
-    color: colors.textMuted,
-    fontSize: 12,
-    textAlign: "center",
-    marginTop: 5,
-  },
-  modalBackdrop: {
+  emptyTitle: { color: colors.text, fontSize: 15, fontWeight: "800" },
+  helper: { color: colors.textMuted, fontSize: 12 },
+  overlay: {
     flex: 1,
     justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
+    padding: 18,
     backgroundColor: colors.scrim,
   },
-  formCard: {
-    width: "100%",
-    maxWidth: 460,
+  modalCard: {
     maxHeight: "90%",
-    borderRadius: 18,
+    borderRadius: 16,
     padding: 18,
     backgroundColor: colors.bg,
   },
-  confirmCard: {
-    width: "100%",
-    maxWidth: 420,
-    borderRadius: 18,
-    padding: 20,
-    backgroundColor: colors.bg,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 15,
-  },
-  modalEyebrow: {
-    color: colors.primary,
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 1,
-  },
+  confirmCard: { borderRadius: 16, padding: 18, backgroundColor: colors.bg },
   modalTitle: {
     color: colors.text,
     fontSize: 19,
-    lineHeight: 25,
     fontWeight: "800",
-    marginTop: 5,
-    textTransform: "capitalize",
+    marginTop: 6,
+    marginBottom: 12,
   },
-  closeButton: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 11,
-    backgroundColor: colors.surface,
-  },
-  closeButtonText: { color: colors.text, fontSize: 24, lineHeight: 28 },
-  formFields: { paddingBottom: 4 },
-  field: { marginBottom: 14 },
+  form: { paddingBottom: 4 },
+  field: { marginBottom: 13, flex: 1 },
   fieldLabel: {
     color: colors.text,
     fontSize: 12,
     fontWeight: "700",
-    marginBottom: 7,
-  },
-  input: {
-    minHeight: 46,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 11,
-    paddingHorizontal: 12,
-    color: colors.text,
-    fontSize: 14,
+    marginBottom: 6,
   },
   choiceList: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   choice: {
-    minHeight: 35,
-    justifyContent: "center",
-    paddingHorizontal: 11,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 10,
-    backgroundColor: colors.bg,
+    borderRadius: 9,
   },
   choiceSelected: {
-    borderColor: colors.primary,
     backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   choiceText: { color: colors.textMuted, fontSize: 11, fontWeight: "700" },
   choiceTextSelected: { color: colors.bg },
-  helperText: { color: colors.textMuted, fontSize: 12 },
-  inlineFields: { flexDirection: "row", gap: 10 },
-  inlineField: { flex: 1 },
-  errorText: {
-    color: colors.primary,
-    fontSize: 12,
-    lineHeight: 17,
-    marginBottom: 12,
-  },
-  modalActions: { flexDirection: "row", gap: 10, marginTop: 6 },
+  inline: { flexDirection: "row", gap: 9 },
+  errorText: { color: colors.primary, fontSize: 12, marginBottom: 10 },
   modalButton: {
     flex: 1,
-    minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 11,
+    minHeight: 43,
+    borderRadius: 10,
   },
-  cancelButton: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bg,
-  },
-  cancelButtonText: { color: colors.text, fontSize: 13, fontWeight: "700" },
-  saveButton: { backgroundColor: colors.primary },
-  dangerButton: { backgroundColor: "#B4233F" },
-  saveButtonText: { color: colors.bg, fontSize: 13, fontWeight: "800" },
+  cancel: { borderWidth: 1, borderColor: colors.border },
+  save: { backgroundColor: colors.primary },
+  saveText: { color: colors.bg, fontWeight: "800" },
   confirmText: {
     color: colors.textMuted,
     fontSize: 13,
     lineHeight: 19,
-    marginTop: 10,
-    marginBottom: 18,
+    marginBottom: 16,
   },
 });
