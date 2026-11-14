@@ -182,6 +182,8 @@ export default function AsistenKelolaSesiScreen() {
   const [message, setMessage] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<SesiAsisten | null>(null);
 
+  const [busy, setBusy] = useState(false);
+
   function openForm(session?: SesiAsisten) {
     setEditing(session ?? null);
     setDraft(
@@ -210,7 +212,7 @@ export default function AsistenKelolaSesiScreen() {
     }));
   }
 
-  function save() {
+  async function save() {
     const validDate =
       /^\d{4}-\d{2}-\d{2}$/.test(draft.tanggal) &&
       !Number.isNaN(Date.parse(`${draft.tanggal}T00:00:00`));
@@ -231,7 +233,7 @@ export default function AsistenKelolaSesiScreen() {
       );
       return;
     }
-    const result = simpanSesi(
+    const result = await simpanSesi(
       { ...draft, catatan: draft.catatan?.trim() },
       editing?.id,
     );
@@ -243,9 +245,9 @@ export default function AsistenKelolaSesiScreen() {
     setMessage(result.message);
   }
 
-  function remove() {
+  async function remove() {
     if (!deleteTarget) return;
-    const result = hapusSesi(deleteTarget.id);
+    const result = await hapusSesi(deleteTarget.id);
     setDeleteTarget(null);
     setMessage(result.message);
   }

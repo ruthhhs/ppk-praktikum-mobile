@@ -33,7 +33,8 @@ const WARNA = {
   scrim: "rgba(23, 69, 74, 0.5)",
 };
 
-function formatTanggal(tanggal: string) {
+function formatTanggal(tanggal?: string) {
+  if (!tanggal || !tanggal.includes("-")) return tanggal || "-";
   const [tahun, bulan, hari] = tanggal.split("-").map(Number);
 
   return new Date(tahun, bulan - 1, hari)

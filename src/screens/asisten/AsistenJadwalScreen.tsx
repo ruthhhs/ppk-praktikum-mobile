@@ -43,7 +43,8 @@ const LABEL_FILTER: Record<FilterSesi, string> = {
   ditutup: "Ditutup",
 };
 
-function formatTanggal(tanggal: string) {
+function formatTanggal(tanggal?: string) {
+  if (!tanggal || !tanggal.includes("-")) return tanggal || "-";
   const [tahun, bulan, hari] = tanggal.split("-").map(Number);
   const date = new Date(tahun, bulan - 1, hari);
 

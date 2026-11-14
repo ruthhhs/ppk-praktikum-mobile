@@ -1,123 +1,42 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { globalStyles, WARNA } from "../../styles/global";
-import { useAsistenWorkflowStore } from "./AsistenWorkflowStore";
+import { globalStyles, WARNA as BASE_WARNA } from "../../styles/global";
+import {
+  useAsistenWorkflowStore,
+  type SesiAsisten,
+} from "./AsistenWorkflowStore";
+import { firestoreRefs, readDocument } from "../../services/firebase/firestore";
+
+const WARNA = {
+  ...BASE_WARNA,
+  soft: "#F5F8F6",
+};
 
 type StatusSesi = "belum_dibuka" | "dibuka" | "ditutup";
 type TindakanKonfirmasi = "buka" | "tutup" | null;
 
-type Sesi = {
-  id: string;
-  praktikum: string;
-  pertemuanKe: number;
-  kelas: string;
-  lab: string;
-  tanggal: string;
-  jamMulai: string;
-  jamSelesai: string;
-  status: StatusSesi;
-  hadir: number;
-  total: number;
-  kodePresensi?: string;
-  catatan?: string;
-};
+type Sesi = SesiAsisten;
 
-const SESI_CONTOH: Sesi[] = [
-  {
-    id: "sesi-01",
-    praktikum: "Basis Data",
-    pertemuanKe: 3,
-    kelas: "A",
-    lab: "Lab Komputer 2",
-    tanggal: "2026-10-23",
-    jamMulai: "08:00",
-    jamSelesai: "10:00",
-    status: "dibuka",
-    hadir: 12,
-    total: 30,
-    kodePresensi: "4827",
-    catatan: "Normalisasi basis data",
-  },
-  {
-    id: "sesi-02",
-    praktikum: "Pemrograman Web",
-    pertemuanKe: 2,
-    kelas: "B",
-    lab: "Lab Komputer 1",
-    tanggal: "2026-10-24",
-    jamMulai: "10:00",
-    jamSelesai: "12:00",
-    status: "belum_dibuka",
-    hadir: 0,
-    total: 28,
-  },
-  {
-    id: "sesi-03",
-    praktikum: "Jaringan Komputer",
-    pertemuanKe: 4,
-    kelas: "A",
-    lab: "Lab Jaringan",
-    tanggal: "2026-10-25",
-    jamMulai: "13:00",
-    jamSelesai: "15:00",
-    status: "belum_dibuka",
-    hadir: 0,
-    total: 26,
-  },
-  {
-    id: "sesi-04",
-    praktikum: "Basis Data",
-    pertemuanKe: 2,
-    kelas: "A",
-    lab: "Lab Komputer 2",
-    tanggal: "2026-10-20",
-    jamMulai: "08:00",
-    jamSelesai: "10:00",
-    status: "ditutup",
-    hadir: 26,
-    total: 30,
-  },
-  {
-    id: "sesi-05",
-    praktikum: "Pemrograman Web",
-    pertemuanKe: 1,
-    kelas: "B",
-    lab: "Lab Komputer 1",
-    tanggal: "2026-10-18",
-    jamMulai: "10:00",
-    jamSelesai: "12:00",
-    status: "ditutup",
-    hadir: 24,
-    total: 28,
-  },
-];
-
-function ambilSesiAwal(id?: string | string[]) {
-  const sesiId = Array.isArray(id) ? id[0] : id;
-  return SESI_CONTOH.find((sesi) => sesi.id === sesiId) ?? SESI_CONTOH[0];
-}
-
-function ubahKeIdSesiApp(id: string) {
-  const nomor = id.match(/^sesi-(\d+)$/)?.[1];
-  return nomor ? `sesi-${nomor.padStart(3, "0")}` : id;
-}
-
-function formatTanggal(tanggal: string) {
+function formatTanggal(tanggal?: string) {
+  if (!tanggal || !tanggal.includes("-")) return tanggal || "-";
   const [tahun, bulan, hari] = tanggal.split("-").map(Number);
+  const date = new Date(tahun, bulan - 1, hari);
+  if (Number.isNaN(date.getTime())) return tanggal;
 
-  return new Date(tahun, bulan - 1, hari)
+  return date
     .toLocaleDateString("id-ID", {
       weekday: "long",
       day: "numeric",
@@ -201,16 +120,15 @@ function Tombol({
 
 export default function AsistenDetailSesiScreen() {
   const { sesiId } = useLocalSearchParams<{ sesiId?: string }>();
-  const { sesi: daftarSesi, buka, tutup } = useAsistenWorkflowStore();
+  const { sesi: daftarSesi, loading: storeLoading, buka, tutup } =
+    useAsistenWorkflowStore();
 
   const requestedId = Array.isArray(sesiId) ? sesiId[0] : sesiId;
-  const idStore = requestedId
-    ? ubahKeIdSesiApp(requestedId)
-    : daftarSesi[0]?.id;
-  const sesiStore = daftarSesi.find((item) => item.id === idStore);
-  const [sesi, setSesi] = useState<Sesi>(
-    () => sesiStore ?? ambilSesiAwal(sesiId),
+  const sesiStore = daftarSesi.find(
+    (item) => item.id === requestedId || (!requestedId && true),
   );
+
+  const [sesi, setSesi] = useState<Sesi | null>(() => sesiStore ?? null);
   const [formTerbuka, setFormTerbuka] = useState(false);
   const [konfirmasi, setKonfirmasi] = useState<TindakanKonfirmasi>(null);
   const [kodePresensi, setKodePresensi] = useState("");
@@ -218,21 +136,29 @@ export default function AsistenDetailSesiScreen() {
   const [errorKode, setErrorKode] = useState("");
 
   useEffect(() => {
-    const sesiBaru = sesiStore ?? ambilSesiAwal(sesiId);
-    setSesi(sesiBaru);
-    setCatatan(sesiBaru.catatan ?? "");
-    setKodePresensi("");
-    setErrorKode("");
-    setFormTerbuka(false);
-    setKonfirmasi(null);
-  }, [sesiId, sesiStore]);
+    if (sesiStore) {
+      setSesi(sesiStore);
+      setCatatan(sesiStore.catatan ?? "");
+      setKodePresensi(sesiStore.kodePresensi ?? "");
 
-  const persentase =
-    sesi.total > 0 ? Math.round((sesi.hadir / sesi.total) * 100) : 0;
+      // If opened but code not loaded yet, fetch from Firestore
+      if (sesiStore.status === "dibuka" && !sesiStore.kodePresensi) {
+        readDocument(firestoreRefs.kodePresensi(sesiStore.id)).then((doc) => {
+          if (doc?.kode) {
+            setSesi((curr) =>
+              curr && curr.id === sesiStore.id
+                ? { ...curr, kodePresensi: doc.kode }
+                : curr,
+            );
+          }
+        });
+      }
+    }
+  }, [sesiStore]);
 
   function bukaForm() {
     setKodePresensi("");
-    setCatatan("");
+    setCatatan(sesi?.catatan ?? "");
     setErrorKode("");
     setFormTerbuka(true);
   }
@@ -248,42 +174,101 @@ export default function AsistenDetailSesiScreen() {
     setKonfirmasi("buka");
   }
 
-  function jalankanKonfirmasi() {
+  async function jalankanKonfirmasi() {
+    if (!sesi) return;
+
     if (konfirmasi === "buka") {
-      const result = buka(sesi.id, kodePresensi.trim(), catatan);
+      const result = await buka(sesi.id, kodePresensi.trim(), catatan);
       if (!result.success) {
         setKonfirmasi(null);
         setFormTerbuka(true);
         setErrorKode(result.message);
         return;
       }
-      setSesi((sesiSaatIni) => ({
-        ...sesiSaatIni,
-        status: "dibuka",
-        kodePresensi: kodePresensi.trim(),
-        catatan: catatan.trim(),
-      }));
+      setSesi((sesiSaatIni) =>
+        sesiSaatIni
+          ? {
+              ...sesiSaatIni,
+              status: "dibuka",
+              kodePresensi: kodePresensi.trim(),
+              catatan: catatan.trim(),
+            }
+          : null,
+      );
     }
 
     if (konfirmasi === "tutup") {
-      const result = tutup(sesi.id);
+      const result = await tutup(sesi.id);
       if (!result.success) {
         setErrorKode(result.message);
         setKonfirmasi(null);
         return;
       }
-      setSesi((sesiSaatIni) => ({ ...sesiSaatIni, status: "ditutup" }));
+      setSesi((sesiSaatIni) =>
+        sesiSaatIni ? { ...sesiSaatIni, status: "ditutup" } : null,
+      );
     }
 
     setKonfirmasi(null);
   }
 
   function bukaRekap() {
+    if (!sesi) return;
     router.push({
       pathname: "/asisten/rekap-sesi",
       params: { sesiId: sesi.id },
     });
   }
+
+  const tombolKembali = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Kembali"
+      onPress={() => router.back()}
+      style={({ pressed }) => [
+        styles.backButton,
+        pressed && globalStyles.buttonPressed,
+      ]}
+    >
+      <Text style={styles.backArrow}>‹</Text>
+      <Text style={styles.backLabel}>Kembali</Text>
+    </Pressable>
+  );
+
+  if (!sesi) {
+    return (
+      <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
+        <View style={styles.page}>
+          {tombolKembali}
+          <View style={styles.heading}>
+            <Text style={styles.eyebrow}>PENGELOLAAN SESI</Text>
+            <Text style={styles.title}>Detail Sesi</Text>
+          </View>
+          <View style={styles.emptyContainer}>
+            {storeLoading ? (
+              <>
+                <ActivityIndicator size="large" color={WARNA.primary} />
+                <Text style={styles.loadingText}>Memuat detail sesi…</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.emptyTitle}>Sesi tidak ditemukan</Text>
+                <Text style={styles.emptyText}>
+                  Sesi ini mungkin sudah dihapus atau belum tersedia di Cloud Firestore.
+                </Text>
+                <View style={{ marginTop: 16 }}>
+                  <Tombol label="Kembali ke Jadwal" onPress={() => router.back()} />
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const persentase =
+    sesi.total > 0 ? Math.round((sesi.hadir / sesi.total) * 100) : 0;
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
@@ -291,18 +276,7 @@ export default function AsistenDetailSesiScreen() {
         contentContainerStyle={styles.page}
         showsVerticalScrollIndicator={false}
       >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Kembali"
-          onPress={() => router.back()}
-          style={({ pressed }) => [
-            styles.backButton,
-            pressed && globalStyles.buttonPressed,
-          ]}
-        >
-          <Text style={styles.backArrow}>‹</Text>
-          <Text style={styles.backLabel}>Kembali</Text>
-        </Pressable>
+        {tombolKembali}
 
         <View style={styles.heading}>
           <Text style={styles.eyebrow}>PENGELOLAAN SESI</Text>
@@ -448,10 +422,10 @@ export default function AsistenDetailSesiScreen() {
 
           <View style={styles.sheet}>
             <View style={styles.sheetHandle} />
-            <Text style={styles.sheetEyebrow}>MULAI PERTEMUAN</Text>
+
             <Text style={styles.sheetTitle}>Buka sesi praktikum</Text>
-            <Text style={styles.sheetDescription}>
-              Buat kode presensi 4 digit dan tambahkan topik bila diperlukan.
+            <Text style={styles.sheetSubtitle}>
+              Tentukan kode presensi 4 angka untuk sesi ini.
             </Text>
 
             <Text style={styles.inputLabel}>Kode presensi</Text>
@@ -465,25 +439,21 @@ export default function AsistenDetailSesiScreen() {
               maxLength={4}
               placeholder="Contoh: 4827"
               placeholderTextColor={WARNA.textMuted}
-              style={[styles.textInput, !!errorKode && styles.textInputError]}
-              accessibilityLabel="Kode presensi empat digit"
+              style={[
+                styles.input,
+                styles.codeInput,
+                !!errorKode && styles.inputError,
+              ]}
             />
             {!!errorKode && <Text style={styles.errorText}>{errorKode}</Text>}
 
-            <Text style={[styles.inputLabel, styles.topicInputLabel]}>
-              Topik atau catatan
-              <Text style={styles.optionalLabel}> · Opsional</Text>
-            </Text>
+            <Text style={styles.inputLabel}>Catatan (opsional)</Text>
             <TextInput
               value={catatan}
               onChangeText={setCatatan}
-              placeholder="Contoh: Normalisasi basis data"
+              placeholder="Misal: materi pengantar bab 3"
               placeholderTextColor={WARNA.textMuted}
-              style={[styles.textInput, styles.topicInput]}
-              multiline
-              maxLength={120}
-              textAlignVertical="top"
-              accessibilityLabel="Topik atau catatan pertemuan"
+              style={styles.input}
             />
 
             <View style={styles.sheetActions}>
@@ -504,7 +474,7 @@ export default function AsistenDetailSesiScreen() {
         animationType="fade"
         onRequestClose={() => setKonfirmasi(null)}
       >
-        <View style={styles.confirmBackdrop}>
+        <View style={styles.modalBackdrop}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Batalkan konfirmasi"
@@ -512,30 +482,14 @@ export default function AsistenDetailSesiScreen() {
             style={StyleSheet.absoluteFill}
           />
 
-          <View style={styles.confirmCard}>
-            <View
-              style={[
-                styles.confirmIcon,
-                konfirmasi === "tutup" && styles.confirmIconDanger,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.confirmIconText,
-                  konfirmasi === "tutup" && styles.confirmIconTextDanger,
-                ]}
-              >
-                {konfirmasi === "buka" ? "↗" : "×"}
-              </Text>
-            </View>
-
+          <View style={styles.confirmDialog}>
             <Text style={styles.confirmTitle}>
               {konfirmasi === "buka" ? "Buka sesi sekarang?" : "Tutup sesi?"}
             </Text>
             <Text style={styles.confirmDescription}>
               {konfirmasi === "buka"
-                ? "Praktikan dapat melakukan presensi menggunakan kode yang kamu buat."
-                : "Presensi tidak bisa dilakukan lagi setelah sesi ditutup."}
+                ? `Kode ${kodePresensi} akan diaktifkan untuk praktikan.`
+                : "Praktikan tidak bisa melakukan presensi lagi setelah sesi ditutup."}
             </Text>
 
             <View style={styles.confirmActions}>
@@ -563,456 +517,404 @@ const styles = StyleSheet.create({
     backgroundColor: WARNA.bg,
   },
   page: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 28,
+    padding: 24,
+    paddingBottom: 40,
+    gap: 16,
+  },
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 64,
+    paddingHorizontal: 24,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: WARNA.textMuted,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: WARNA.text,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  emptyText: {
+    fontSize: 14,
+    color: WARNA.textMuted,
+    textAlign: "center",
   },
   backButton: {
-    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
-    paddingVertical: 8,
+    alignSelf: "flex-start",
+    paddingVertical: 6,
     paddingRight: 12,
-    marginBottom: 16,
+    gap: 4,
   },
   backArrow: {
-    color: WARNA.primary,
-    fontSize: 28,
-    lineHeight: 28,
-    marginTop: -3,
+    fontSize: 22,
+    color: WARNA.text,
+    lineHeight: 22,
   },
   backLabel: {
+    fontSize: 14,
     color: WARNA.text,
-    fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   heading: {
-    marginBottom: 20,
+    gap: 4,
   },
   eyebrow: {
-    color: WARNA.primary,
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 1.1,
-    marginBottom: 5,
+    fontSize: 11,
+    letterSpacing: 1.5,
+    fontWeight: "700",
+    color: WARNA.textMuted,
   },
   title: {
-    color: WARNA.text,
     fontSize: 28,
-    lineHeight: 34,
-    fontWeight: "800",
-    letterSpacing: -0.7,
+    fontWeight: "700",
+    color: WARNA.text,
   },
   subtitle: {
+    fontSize: 14,
     color: WARNA.textMuted,
-    fontSize: 13,
-    lineHeight: 19,
-    marginTop: 4,
   },
   sessionCard: {
-    padding: 17,
-    borderRadius: 20,
+    backgroundColor: WARNA.bg,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: WARNA.border,
-    backgroundColor: WARNA.surface,
+    padding: 20,
+    gap: 8,
   },
   sessionCardTop: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
-    marginBottom: 12,
+    alignItems: "center",
   },
   courseKicker: {
-    color: WARNA.textMuted,
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 1,
-  },
-  badge: {
-    minHeight: 27,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderRadius: 99,
-  },
-  badgeDibuka: {
-    backgroundColor: WARNA.highlight,
-    borderColor: WARNA.highlight,
-  },
-  badgeBelumDibuka: {
-    backgroundColor: WARNA.bg,
-    borderColor: WARNA.textMuted,
-  },
-  badgeDitutup: {
-    backgroundColor: WARNA.primary,
-    borderColor: WARNA.primary,
-  },
-  badgeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: WARNA.text,
-  },
-  badgeTextBase: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "700",
-  },
-  badgeText: {
-    color: WARNA.text,
-  },
-  badgeTextDitutup: {
-    color: WARNA.surface,
+    letterSpacing: 1.2,
+    color: WARNA.textMuted,
   },
   courseName: {
+    fontSize: 22,
+    fontWeight: "700",
     color: WARNA.text,
-    fontSize: 21,
-    lineHeight: 27,
-    fontWeight: "800",
-    letterSpacing: -0.4,
   },
   meetingInfo: {
+    fontSize: 14,
     color: WARNA.textMuted,
-    fontSize: 13,
-    lineHeight: 19,
-    marginTop: 3,
   },
   separator: {
-    color: WARNA.accent,
-    fontWeight: "900",
+    color: WARNA.border,
   },
   divider: {
     height: 1,
     backgroundColor: WARNA.border,
-    marginVertical: 15,
+    marginVertical: 8,
   },
   infoRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: 12,
-    marginBottom: 12,
+    paddingVertical: 4,
   },
   infoLabel: {
-    width: 68,
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1,
     color: WARNA.textMuted,
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    paddingTop: 2,
   },
   infoValue: {
-    flex: 1,
-    color: WARNA.text,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 13,
     fontWeight: "600",
-    textAlign: "right",
+    color: WARNA.text,
   },
   topicBox: {
-    marginTop: 2,
-    padding: 12,
-    borderRadius: 13,
-    backgroundColor: WARNA.bg,
+    marginTop: 8,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: WARNA.border,
+    gap: 4,
   },
   topicLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1,
     color: WARNA.textMuted,
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 0.7,
-    marginBottom: 4,
   },
   topicValue: {
+    fontSize: 14,
     color: WARNA.text,
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: "600",
   },
   codeCard: {
-    marginTop: 14,
-    padding: 17,
-    borderRadius: 20,
-    backgroundColor: WARNA.text,
+    backgroundColor: WARNA.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: WARNA.border,
+    padding: 20,
+    gap: 16,
   },
   codeCardHeading: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
+    alignItems: "flex-start",
   },
   codeTitle: {
-    color: WARNA.surface,
-    fontSize: 15,
-    fontWeight: "800",
+    fontSize: 14,
+    fontWeight: "700",
+    color: WARNA.text,
   },
   codeHint: {
-    color: "rgba(254, 255, 224, 0.72)",
-    fontSize: 11,
-    lineHeight: 16,
-    marginTop: 3,
+    fontSize: 12,
+    color: WARNA.textMuted,
+    marginTop: 2,
   },
   codeLiveMark: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 6,
     paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 99,
-    backgroundColor: "rgba(208, 232, 110, 0.18)",
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: "rgba(53, 193, 194, 0.2)",
   },
   codeLiveDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: WARNA.highlight,
+    backgroundColor: WARNA.primary,
   },
   codeLiveText: {
-    color: WARNA.highlight,
-    fontSize: 8,
-    fontWeight: "800",
+    fontSize: 10,
+    fontWeight: "700",
+    color: WARNA.text,
     letterSpacing: 0.8,
   },
   codeDigits: {
     flexDirection: "row",
-    gap: 9,
-    marginTop: 18,
+    justifyContent: "center",
+    gap: 12,
   },
   codeDigit: {
-    width: 47,
-    height: 52,
+    width: 52,
+    height: 64,
+    borderRadius: 12,
+    backgroundColor: WARNA.bg,
+    borderWidth: 2,
+    borderColor: WARNA.primary,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 13,
-    backgroundColor: WARNA.surface,
   },
   codeDigitText: {
-    color: WARNA.text,
-    fontSize: 24,
-    fontWeight: "800",
+    fontSize: 28,
+    fontWeight: "700",
+    color: WARNA.primary,
   },
   attendanceCard: {
-    marginTop: 14,
-    padding: 17,
-    borderRadius: 20,
+    backgroundColor: WARNA.bg,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: WARNA.border,
-    backgroundColor: WARNA.bg,
+    padding: 20,
+    gap: 12,
   },
   attendanceTop: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
+    alignItems: "flex-start",
   },
   attendanceLabel: {
+    fontSize: 12,
     color: WARNA.textMuted,
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  attendanceCount: {
-    color: WARNA.text,
-    fontSize: 18,
-    fontWeight: "800",
-    marginTop: 3,
-  },
-  attendanceTotal: {
-    color: WARNA.textMuted,
-    fontSize: 11,
     fontWeight: "500",
   },
+  attendanceCount: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: WARNA.text,
+    marginTop: 2,
+  },
+  attendanceTotal: {
+    fontSize: 13,
+    fontWeight: "400",
+    color: WARNA.textMuted,
+  },
   attendancePercent: {
+    fontSize: 28,
+    fontWeight: "700",
     color: WARNA.primary,
-    fontSize: 18,
-    fontWeight: "800",
   },
   progressTrack: {
-    height: 7,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: WARNA.soft,
     overflow: "hidden",
-    borderRadius: 99,
-    backgroundColor: WARNA.border,
   },
   progressFill: {
     height: "100%",
-    borderRadius: 99,
     backgroundColor: WARNA.primary,
-  },
-  actions: {
-    gap: 10,
-    marginTop: 18,
+    borderRadius: 4,
   },
   closedNotice: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    marginTop: 18,
-    padding: 14,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: WARNA.soft,
     borderWidth: 1,
     borderColor: WARNA.border,
-    borderRadius: 16,
-    backgroundColor: WARNA.surface,
   },
   closedMark: {
-    width: 34,
-    height: 34,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: WARNA.text,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 17,
-    backgroundColor: WARNA.highlight,
   },
   closedMarkText: {
-    color: WARNA.text,
-    fontSize: 17,
-    fontWeight: "800",
+    color: WARNA.bg,
+    fontSize: 14,
+    fontWeight: "700",
   },
   closedCopy: {
     flex: 1,
   },
   closedTitle: {
+    fontSize: 14,
+    fontWeight: "700",
     color: WARNA.text,
-    fontSize: 12,
-    fontWeight: "800",
   },
   closedDescription: {
+    fontSize: 12,
     color: WARNA.textMuted,
-    fontSize: 11,
-    lineHeight: 16,
     marginTop: 2,
+  },
+  actions: {
+    gap: 8,
+    marginTop: 8,
+  },
+  badge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  badgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: WARNA.primary,
+  },
+  badgeTextBase: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  badgeBelumDibuka: {
+    backgroundColor: WARNA.soft,
+  },
+  badgeDibuka: {
+    backgroundColor: "rgba(208, 232, 110, 0.4)",
+  },
+  badgeDitutup: {
+    backgroundColor: "rgba(23, 69, 74, 0.1)",
+  },
+  badgeText: {
+    color: WARNA.text,
+  },
+  badgeTextDitutup: {
+    color: WARNA.textMuted,
   },
   modalBackdrop: {
     flex: 1,
+    backgroundColor: "rgba(23, 69, 74, 0.5)",
     justifyContent: "flex-end",
-    backgroundColor: WARNA.scrim,
   },
   sheet: {
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 28,
+    backgroundColor: WARNA.bg,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    backgroundColor: WARNA.surface,
+    padding: 24,
+    gap: 12,
   },
   sheetHandle: {
-    alignSelf: "center",
-    width: 38,
+    width: 40,
     height: 4,
-    borderRadius: 99,
+    borderRadius: 2,
     backgroundColor: WARNA.border,
-    marginBottom: 19,
-  },
-  sheetEyebrow: {
-    color: WARNA.primary,
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 1,
+    alignSelf: "center",
+    marginBottom: 8,
   },
   sheetTitle: {
+    fontSize: 20,
+    fontWeight: "700",
     color: WARNA.text,
-    fontSize: 22,
-    lineHeight: 28,
-    fontWeight: "800",
-    marginTop: 5,
   },
-  sheetDescription: {
+  sheetSubtitle: {
+    fontSize: 13,
     color: WARNA.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 5,
-    marginBottom: 18,
+    marginBottom: 8,
   },
   inputLabel: {
+    fontSize: 12,
+    fontWeight: "600",
     color: WARNA.text,
-    fontSize: 11,
-    fontWeight: "800",
-    marginBottom: 7,
   },
-  optionalLabel: {
-    color: WARNA.textMuted,
-    fontWeight: "500",
-  },
-  textInput: {
-    minHeight: 48,
-    paddingHorizontal: 13,
+  input: {
+    backgroundColor: WARNA.soft,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: WARNA.border,
-    borderRadius: 12,
-    backgroundColor: WARNA.bg,
-    color: WARNA.text,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     fontSize: 14,
+    color: WARNA.text,
   },
-  textInputError: {
+  codeInput: {
+    fontSize: 24,
+    fontWeight: "700",
+    letterSpacing: 8,
+    textAlign: "center",
+  },
+  inputError: {
     borderColor: WARNA.primary,
   },
   errorText: {
+    fontSize: 12,
     color: WARNA.primary,
-    fontSize: 11,
-    marginTop: 5,
-  },
-  topicInputLabel: {
-    marginTop: 16,
-  },
-  topicInput: {
-    minHeight: 78,
-    paddingTop: 11,
+    marginTop: -4,
   },
   sheetActions: {
     flexDirection: "row",
-    gap: 10,
-    marginTop: 20,
+    gap: 8,
+    marginTop: 12,
   },
-  confirmBackdrop: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 22,
-    backgroundColor: WARNA.scrim,
-  },
-  confirmCard: {
-    width: "100%",
-    maxWidth: 380,
-    padding: 20,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: WARNA.border,
-    backgroundColor: WARNA.surface,
-  },
-  confirmIcon: {
-    width: 42,
-    height: 42,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 21,
-    backgroundColor: WARNA.highlight,
-    marginBottom: 14,
-  },
-  confirmIconDanger: {
-    backgroundColor: "rgba(181, 24, 95, 0.1)",
-  },
-  confirmIconText: {
-    color: WARNA.text,
-    fontSize: 19,
-    fontWeight: "800",
-  },
-  confirmIconTextDanger: {
-    color: WARNA.primary,
+  confirmDialog: {
+    margin: 24,
+    backgroundColor: WARNA.bg,
+    borderRadius: 20,
+    padding: 24,
+    gap: 12,
   },
   confirmTitle: {
+    fontSize: 18,
+    fontWeight: "700",
     color: WARNA.text,
-    fontSize: 19,
-    lineHeight: 25,
-    fontWeight: "800",
   },
   confirmDescription: {
+    fontSize: 14,
     color: WARNA.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 6,
+    lineHeight: 20,
   },
   confirmActions: {
     flexDirection: "row",
-    gap: 10,
-    marginTop: 20,
+    gap: 8,
+    marginTop: 8,
   },
 });
