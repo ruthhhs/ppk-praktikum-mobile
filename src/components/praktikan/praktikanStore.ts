@@ -1140,7 +1140,6 @@ export function usePraktikanStore() {
       b.createdAt.localeCompare(a.createdAt),
     );
   }, [pengajuanIzinMap]);
-  const pengajuanIzinMap = snapshot.izinFirestoreMap;
 
   const catatPresensiPraktikan = async (
     sesiIdInput: string,

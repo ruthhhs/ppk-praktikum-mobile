@@ -1,35 +1,35 @@
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../../constants/theme";
 import type {
-    JadwalDoc,
-    KelasDoc,
-    PesertaDoc,
-    PraktikumDoc,
-    SesiDoc,
+  JadwalDoc,
+  KelasDoc,
+  PesertaDoc,
+  PraktikumDoc,
+  SesiDoc,
 } from "../../data/firestoreType";
 import { useAuth } from "../../hooks/useAuth";
 import {
-    addDocument,
-    firestoreRefs,
-    listenCollection,
-    readCollection,
-    readDocument,
-    removeDocument,
-    serverTimestamp,
-    setDocument,
-    updateDocument,
+  addDocument,
+  firestoreRefs,
+  listenCollection,
+  readCollection,
+  readDocument,
+  removeDocument,
+  serverTimestamp,
+  setDocument,
+  updateDocument,
 } from "../../services/firebase/firestore";
 
 type DataKind = "praktikum" | "kelas" | "peserta" | "jadwal";
@@ -289,14 +289,14 @@ export default function AsistenKelolaDataScreen() {
     unsubscribers.push(
       listenCollection(
         firestoreRefs.jadwal(),
-        (items) => setJadwal(items.map((item) => ({ id: item.id, ...item }))),
+        (items) => setJadwal(items.map((item) => ({ ...item }))),
         onError,
       ),
     );
     unsubscribers.push(
       listenCollection(
         firestoreRefs.sesi(),
-        (items) => setSesi(items.map((item) => ({ id: item.id, ...item }))),
+        (items) => setSesi(items.map((item) => ({ ...item }))),
         onError,
       ),
     );
@@ -304,7 +304,7 @@ export default function AsistenKelolaDataScreen() {
       listenCollection(
         firestoreRefs.kelas(),
         (items) => {
-          setKelas(items.map((item) => ({ id: item.id, ...item })));
+          setKelas(items.map((item) => ({ ...item })));
           const activeIds = new Set(items.map((item) => item.id));
           for (const [kelasId, unsubscribe] of participantUnsubscribers) {
             if (!activeIds.has(kelasId)) {
@@ -1173,14 +1173,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     marginBottom: 6,
-  },
-  input: {
-    minHeight: 44,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 11,
-    color: colors.text,
   },
   choiceList: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   choice: {
