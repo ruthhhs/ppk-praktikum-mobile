@@ -88,9 +88,9 @@ export default function AsistenIzinScreen() {
     [filter, pengajuan],
   );
 
-  function confirmDecision() {
+  async function confirmDecision() {
     if (!selected) return;
-    const result = putuskanIzin(selected.item.id, selected.decision);
+    const result = await putuskanIzin(selected.item.id, selected.decision);
     setSelected(null);
     setFeedback(result.message);
   }
