@@ -1,11 +1,12 @@
 export type Role = 'asisten' | 'praktikan';
+import type { Timestamp } from '@react-native-firebase/firestore';
 
 export type User = {
   id: string;
   nama: string;
   role: Role;
   nim?: string;
-  email: string;
+  email?: string;
 };
 
 export type UserProfile = {
@@ -14,14 +15,13 @@ export type UserProfile = {
   email: string;
   role: Role;
   nim?: string;
-  createdAt?: unknown;
+  createdAt: Timestamp | null;
 };
 
 export type Praktikum = {
   id: string;
   nama: string;
   lab: string;
-  email: string;
 };
 
 export type SesiStatus =

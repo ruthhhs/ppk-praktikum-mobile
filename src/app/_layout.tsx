@@ -37,13 +37,13 @@ function RootNavigator() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <AppProvider>
+    <AppProvider>
+      <AuthProvider>
         <ThemeProvider value={DefaultTheme}>
           <RootNavigator />
         </ThemeProvider>
-      </AppProvider>
-    </AuthProvider>
+      </AuthProvider>
+    </AppProvider>
   );
 }
 
