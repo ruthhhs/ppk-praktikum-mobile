@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -33,9 +33,11 @@ export type PresensiFormModalProps = {
   pertemuanKe: number;
   kelas: string;
   lab: string;
-  petunjukKodeDemo?: string;
+  isSubmitting?: boolean;
   onClose: () => void;
-  onSubmitKode: (kode: string) => HasilSubmitKode;
+  onSubmitKode: (
+    kode: string,
+  ) => Promise<HasilSubmitKode> | HasilSubmitKode;
 };
 
 export default function PresensiFormModal({
@@ -44,21 +46,34 @@ export default function PresensiFormModal({
   pertemuanKe,
   kelas,
   lab,
-  petunjukKodeDemo,
+  isSubmitting = false,
   onClose,
   onSubmitKode,
 }: PresensiFormModalProps) {
   const [kodeInput, setKodeInput] = useState('');
   const [pesanError, setPesanError] = useState<string | null>(null);
+  const [sedangMengirim, setSedangMengirim] = useState(false);
 
-  useEffect(() => {
-    if (visible) {
-      setKodeInput('');
-      setPesanError(null);
+  const prosesBerjalan = isSubmitting || sedangMengirim;
+
+  const resetFormState = () => {
+    setKodeInput('');
+    setPesanError(null);
+    setSedangMengirim(false);
+  };
+
+  const handleTutup = () => {
+    if (prosesBerjalan) {
+      return;
     }
-  }, [visible]);
+    resetFormState();
+    onClose();
+  };
 
   const handleUbahKode = (teks: string) => {
+    if (prosesBerjalan) {
+      return;
+    }
     const hanyaAngka = teks.replace(/\D/g, '').slice(0, 4);
     setKodeInput(hanyaAngka);
     if (pesanError) {
@@ -66,7 +81,11 @@ export default function PresensiFormModal({
     }
   };
 
-  const handleKirim = () => {
+  const handleKirim = async () => {
+    if (prosesBerjalan) {
+      return;
+    }
+
     const kodeBersih = kodeInput.trim();
 
     if (kodeBersih.length === 0) {
@@ -79,9 +98,17 @@ export default function PresensiFormModal({
       return;
     }
 
-    const hasil = onSubmitKode(kodeBersih);
-    if (!hasil.ok && hasil.pesanErrorInput) {
-      setPesanError(hasil.pesanErrorInput);
+    setSedangMengirim(true);
+    try {
+      const hasil = await onSubmitKode(kodeBersih);
+      if (!hasil.ok && hasil.pesanErrorInput) {
+        setPesanError(hasil.pesanErrorInput);
+      } else {
+        setKodeInput('');
+        setPesanError(null);
+      }
+    } finally {
+      setSedangMengirim(false);
     }
   };
 
@@ -90,7 +117,8 @@ export default function PresensiFormModal({
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={onClose}
+      onShow={resetFormState}
+      onRequestClose={handleTutup}
     >
       <KeyboardAvoidingView
         style={styles.modalOverlay}
@@ -99,8 +127,9 @@ export default function PresensiFormModal({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Tutup form presensi"
+          disabled={prosesBerjalan}
           style={styles.backdrop}
-          onPress={onClose}
+          onPress={handleTutup}
         />
 
         <View style={styles.modalCard}>
@@ -122,6 +151,7 @@ export default function PresensiFormModal({
               placeholderTextColor={WARNA.textMuted}
               keyboardType="number-pad"
               maxLength={4}
+              editable={!prosesBerjalan}
               autoFocus
               returnKeyType="done"
               onSubmitEditing={handleKirim}
@@ -166,39 +196,51 @@ export default function PresensiFormModal({
                 bertugas di ruang lab.
               </Text>
             )}
-
-            {petunjukKodeDemo ? (
-              <View style={styles.demoHintRow}>
-                <Text style={styles.demoHintText}>
-                  Kode sesi aktif (simulasi demo): {petunjukKodeDemo}
-                </Text>
-              </View>
-            ) : null}
           </View>
 
           <View style={styles.actionRow}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Batal"
-              onPress={onClose}
+              accessibilityState={{ disabled: prosesBerjalan }}
+              disabled={prosesBerjalan}
+              onPress={handleTutup}
               style={({ pressed }) => [
                 styles.secondaryButton,
-                pressed && styles.pressed,
+                prosesBerjalan && styles.disabledButton,
+                pressed && !prosesBerjalan && styles.pressed,
               ]}
             >
-              <Text style={styles.secondaryButtonText}>Batal</Text>
+              <Text
+                style={[
+                  styles.secondaryButtonText,
+                  prosesBerjalan && styles.disabledButtonText,
+                ]}
+              >
+                Batal
+              </Text>
             </Pressable>
 
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Kirim kode presensi"
+              accessibilityState={{ disabled: prosesBerjalan }}
+              disabled={prosesBerjalan}
               onPress={handleKirim}
               style={({ pressed }) => [
                 styles.primaryButton,
-                pressed && styles.pressed,
+                prosesBerjalan && styles.disabledButton,
+                pressed && !prosesBerjalan && styles.pressed,
               ]}
             >
-              <Text style={styles.primaryButtonText}>Kirim</Text>
+              <Text
+                style={[
+                  styles.primaryButtonText,
+                  prosesBerjalan && styles.disabledButtonText,
+                ]}
+              >
+                {prosesBerjalan ? 'Menyimpan...' : 'Kirim'}
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -322,19 +364,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: '500',
   },
-  demoHintRow: {
-    backgroundColor: WARNA.bg,
-    borderColor: WARNA.border,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  demoHintText: {
-    color: WARNA.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
-  },
   actionRow: {
     flexDirection: 'row',
     gap: 12,
@@ -371,6 +400,13 @@ const styles = StyleSheet.create({
     color: WARNA.surface,
     fontSize: 15,
     fontWeight: '800',
+  },
+  disabledButton: {
+    backgroundColor: WARNA.border,
+    borderColor: WARNA.border,
+  },
+  disabledButtonText: {
+    color: WARNA.textMuted,
   },
   pressed: {
     opacity: 0.85,

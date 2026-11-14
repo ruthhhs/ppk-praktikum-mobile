@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,190 +18,24 @@ import {
   type AlasanPenolakanPresensi,
   type DataSuksesPresensi,
 } from '../../components/praktikan/PresensiFeedbackModals';
+import {
+  ambilNamaPraktikum,
+  formatJamPresensi,
+  formatRentangJam,
+  formatTanggalIndonesia,
+  LABEL_STATUS,
+  normalisasiIdSesiLokal,
+  usePraktikanStore,
+  WARNA,
+  type Praktikum,
+  type Presensi,
+  type Role,
+  type Sesi,
+  type SesiStatus,
+  type User,
+} from '../../components/praktikan/praktikanStore';
 
-export type Role = 'asisten' | 'praktikan';
-
-export type User = {
-  id: string;
-  nama: string;
-  role: Role;
-  nim?: string;
-};
-
-export type Praktikum = {
-  id: string;
-  nama: string;
-  lab: string;
-};
-
-export type SesiStatus = 'belum_dibuka' | 'dibuka' | 'ditutup';
-
-export type Sesi = {
-  id: string;
-  praktikumId: string;
-  pertemuanKe: number;
-  kelas: string;
-  lab: string;
-  tanggal: string;
-  jamMulai: string;
-  jamSelesai: string;
-  status: SesiStatus;
-  kodePresensi?: string;
-  catatan?: string;
-};
-
-export type Presensi = {
-  id: string;
-  sesiId: string;
-  userId: string;
-  waktu: string;
-};
-
-const WARNA = {
-  bg: '#FFFFFF',
-  surface: '#FEFFE0',
-  text: '#17454A',
-  textMuted: 'rgba(23, 69, 74, 0.7)',
-  primary: '#B5185F',
-  highlight: '#D0E86E',
-  accent: '#35C1C2',
-  border: 'rgba(23, 69, 74, 0.15)',
-} as const;
-
-const PRAKTIKAN_AKTIF: User = {
-  id: 'praktikan-01',
-  nama: 'Siti Aisyah',
-  role: 'praktikan',
-  nim: '2210512001',
-};
-
-const DAFTAR_PRAKTIKUM: Record<string, Praktikum> = {
-  'prak-01': {
-    id: 'prak-01',
-    nama: 'Basis Data',
-    lab: 'Lab Komputer 2',
-  },
-  'prak-02': {
-    id: 'prak-02',
-    nama: 'Pemrograman Web',
-    lab: 'Lab Komputer 1',
-  },
-  'prak-03': {
-    id: 'prak-03',
-    nama: 'Jaringan Komputer',
-    lab: 'Lab Jaringan',
-  },
-};
-
-const SESI_CONTOH: Sesi[] = [
-  {
-    id: 'sesi-01',
-    praktikumId: 'prak-01',
-    pertemuanKe: 3,
-    kelas: 'A',
-    lab: 'Lab Komputer 2',
-    tanggal: '2026-10-23',
-    jamMulai: '08:00',
-    jamSelesai: '10:00',
-    status: 'dibuka',
-    kodePresensi: '4827',
-    catatan: 'Normalisasi basis data',
-  },
-  {
-    id: 'sesi-02',
-    praktikumId: 'prak-02',
-    pertemuanKe: 2,
-    kelas: 'B',
-    lab: 'Lab Komputer 1',
-    tanggal: '2026-10-24',
-    jamMulai: '10:00',
-    jamSelesai: '12:00',
-    status: 'belum_dibuka',
-    catatan: 'Layout responsif dengan Flexbox',
-  },
-  {
-    id: 'sesi-03',
-    praktikumId: 'prak-03',
-    pertemuanKe: 4,
-    kelas: 'A',
-    lab: 'Lab Jaringan',
-    tanggal: '2026-10-25',
-    jamMulai: '13:00',
-    jamSelesai: '15:00',
-    status: 'belum_dibuka',
-    catatan: 'Pengalamatan IPv4 dan subnetting',
-  },
-  {
-    id: 'sesi-04',
-    praktikumId: 'prak-01',
-    pertemuanKe: 2,
-    kelas: 'A',
-    lab: 'Lab Komputer 2',
-    tanggal: '2026-10-20',
-    jamMulai: '08:00',
-    jamSelesai: '10:00',
-    status: 'ditutup',
-    catatan: 'Model relasional dan kunci primer',
-  },
-  {
-    id: 'sesi-05',
-    praktikumId: 'prak-02',
-    pertemuanKe: 1,
-    kelas: 'B',
-    lab: 'Lab Komputer 1',
-    tanggal: '2026-10-18',
-    jamMulai: '10:00',
-    jamSelesai: '12:00',
-    status: 'ditutup',
-    catatan: 'Struktur dasar dokumen HTML dan CSS',
-  },
-];
-
-const PRESENSI_AWAL: Presensi[] = [
-  {
-    id: 'presensi-01',
-    sesiId: 'sesi-04',
-    userId: 'praktikan-01',
-    waktu: '2026-10-20T08:03:12+07:00',
-  },
-];
-
-const LABEL_STATUS: Record<SesiStatus, string> = {
-  belum_dibuka: 'Belum dibuka',
-  dibuka: 'Dibuka',
-  ditutup: 'Ditutup',
-};
-
-function ambilNamaPraktikum(praktikumId: string): string {
-  return DAFTAR_PRAKTIKUM[praktikumId]?.nama ?? 'Praktikum';
-}
-
-function formatTanggal(tanggal: string): string {
-  const [tahun, bulan, hari] = tanggal.split('-').map(Number);
-  const date = new Date(tahun, bulan - 1, hari);
-
-  return date
-    .toLocaleDateString('id-ID', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-    })
-    .replace('.', '');
-}
-
-function formatRentangJam(jamMulai: string, jamSelesai: string): string {
-  return `${jamMulai.replace(':', '.')} - ${jamSelesai.replace(':', '.')}`;
-}
-
-function formatJamPresensi(waktuIso: string): string {
-  const date = new Date(waktuIso);
-  if (Number.isNaN(date.getTime())) {
-    return '08.03';
-  }
-  const jam = String(date.getHours()).padStart(2, '0');
-  const menit = String(date.getMinutes()).padStart(2, '0');
-  return `${jam}.${menit}`;
-}
+export type { Praktikum, Presensi, Role, Sesi, SesiStatus, User };
 
 function StatusBadge({ status }: { status: SesiStatus }) {
   return (
@@ -237,16 +72,28 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function SesiDetailPraktikanScreen() {
+  const {
+    currentUser,
+    isAuthenticated,
+    isLoading,
+    isSubmittingPresensi,
+    error,
+    praktikum,
+    sesi,
+    presensi,
+    pengajuanIzinMap,
+    catatPresensiPraktikan,
+    muatUlangData,
+  } = usePraktikanStore();
+
   const params = useLocalSearchParams<{ sesiId?: string | string[] }>();
   const paramSesiId = Array.isArray(params.sesiId)
     ? params.sesiId[0]
     : params.sesiId;
 
   const [selectedSesiId, setSelectedSesiId] = useState<string>(
-    paramSesiId ?? 'sesi-01'
+    paramSesiId ?? normalisasiIdSesiLokal(paramSesiId),
   );
-  const [daftarPresensi, setDaftarPresensi] =
-    useState<Presensi[]>(PRESENSI_AWAL);
   const [formTerbuka, setFormTerbuka] = useState(false);
   const [dataSuksesModal, setDataSuksesModal] =
     useState<DataSuksesPresensi | null>(null);
@@ -254,19 +101,31 @@ export default function SesiDetailPraktikanScreen() {
     useState<AlasanPenolakanPresensi | null>(null);
 
   const sesiAktif = useMemo(() => {
-    const targetId = paramSesiId ?? selectedSesiId;
-    return SESI_CONTOH.find((item) => item.id === targetId) ?? null;
-  }, [paramSesiId, selectedSesiId]);
+    const rawTarget = paramSesiId ?? selectedSesiId;
+    const normTarget = normalisasiIdSesiLokal(rawTarget);
+    return (
+      sesi.find(
+        (item) => item.id === rawTarget || item.id === normTarget,
+      ) ?? null
+    );
+  }, [paramSesiId, selectedSesiId, sesi]);
 
   const presensiSaya = useMemo(() => {
     if (!sesiAktif) {
       return undefined;
     }
-    return daftarPresensi.find(
+    return presensi.find(
       (item) =>
-        item.sesiId === sesiAktif.id && item.userId === PRAKTIKAN_AKTIF.id
+        item.sesiId === sesiAktif.id && item.userId === currentUser.id,
     );
-  }, [daftarPresensi, sesiAktif]);
+  }, [currentUser.id, presensi, sesiAktif]);
+
+  const izinSaya = useMemo(() => {
+    if (!sesiAktif) {
+      return undefined;
+    }
+    return pengajuanIzinMap[sesiAktif.id];
+  }, [pengajuanIzinMap, sesiAktif]);
 
   const kembaliKeJadwal = () => {
     if (router.canGoBack()) {
@@ -277,6 +136,10 @@ export default function SesiDetailPraktikanScreen() {
   };
 
   const handlePresensiSekarang = () => {
+    if (!isAuthenticated) {
+      setAlasanInfoModal('belum_login');
+      return;
+    }
     if (!sesiAktif) {
       return;
     }
@@ -292,65 +155,97 @@ export default function SesiDetailPraktikanScreen() {
       setAlasanInfoModal('sudah_presensi');
       return;
     }
+    if (izinSaya?.status === 'diterima') {
+      setAlasanInfoModal('izin_diterima');
+      return;
+    }
     setFormTerbuka(true);
   };
 
-  const handleSubmitKode = (kode: string): HasilSubmitKode => {
+  const handleSubmitKode = async (kode: string): Promise<HasilSubmitKode> => {
     if (!sesiAktif) {
       setFormTerbuka(false);
       return { ok: false };
     }
 
-    if (sesiAktif.status === 'belum_dibuka') {
-      setFormTerbuka(false);
-      setAlasanInfoModal('belum_dibuka');
-      return { ok: false };
-    }
-
-    if (sesiAktif.status === 'ditutup') {
-      setFormTerbuka(false);
-      setAlasanInfoModal('sudah_ditutup');
-      return { ok: false };
-    }
-
-    // Pengecekan aturan bisnis: 1 praktikan hanya boleh 1 kali presensi per sesi
-    const sudahTercatat = daftarPresensi.some(
-      (item) =>
-        item.sesiId === sesiAktif.id && item.userId === PRAKTIKAN_AKTIF.id
+    const hasil = await catatPresensiPraktikan(
+      sesiAktif.id,
+      currentUser.id,
+      kode,
     );
-    if (sudahTercatat) {
+
+    if (!hasil.ok) {
+      if (
+        hasil.reason === 'kode_kosong' ||
+        hasil.reason === 'kode_format' ||
+        hasil.reason === 'kode_salah'
+      ) {
+        return {
+          ok: false,
+          pesanErrorInput: hasil.pesan,
+        };
+      }
+
       setFormTerbuka(false);
-      setAlasanInfoModal('sudah_presensi');
+      if (
+        hasil.reason === 'sudah_presensi' ||
+        hasil.reason === 'izin_diterima' ||
+        hasil.reason === 'belum_dibuka' ||
+        hasil.reason === 'sudah_ditutup' ||
+        hasil.reason === 'belum_login' ||
+        hasil.reason === 'gagal_jaringan'
+      ) {
+        setAlasanInfoModal(hasil.reason);
+      }
       return { ok: false };
     }
 
-    if (!sesiAktif.kodePresensi || kode !== sesiAktif.kodePresensi) {
-      return {
-        ok: false,
-        pesanErrorInput: 'Kode salah',
-      };
-    }
-
-    const waktuSekarang = new Date().toISOString();
-    const catatanBaru: Presensi = {
-      id: `presensi-${Date.now()}`,
-      sesiId: sesiAktif.id,
-      userId: PRAKTIKAN_AKTIF.id,
-      waktu: waktuSekarang,
-    };
-
-    setDaftarPresensi((prev) => [...prev, catatanBaru]);
     setFormTerbuka(false);
     setDataSuksesModal({
-      namaPraktikan: PRAKTIKAN_AKTIF.nama,
-      nim: PRAKTIKAN_AKTIF.nim,
-      namaPraktikum: ambilNamaPraktikum(sesiAktif.praktikumId),
+      namaPraktikan: currentUser.nama,
+      nim: currentUser.nim,
+      namaPraktikum: ambilNamaPraktikum(
+        praktikum,
+        sesiAktif.praktikumId,
+        sesiAktif.namaPraktikum,
+      ),
       pertemuanKe: sesiAktif.pertemuanKe,
       kelas: sesiAktif.kelas,
-      waktuIso: waktuSekarang,
+      waktuIso: hasil.presensi.waktu,
     });
     return { ok: true };
   };
+
+  if (isLoading && !sesiAktif) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+        <View style={styles.headerRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Kembali ke jadwal"
+            onPress={kembaliKeJadwal}
+            style={({ pressed }) => [
+              styles.backButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.backButtonText}>{'<-'} Kembali</Text>
+          </Pressable>
+          <Text style={styles.headerTitle}>Detail Sesi</Text>
+        </View>
+
+        <View style={styles.emptyContainer}>
+          <View style={styles.emptyCard}>
+            <ActivityIndicator size="small" color={WARNA.primary} />
+            <Text style={styles.emptyTitle}>Memuat detail sesi...</Text>
+            <Text style={styles.emptyBody}>
+              Menyinkronkan status sesi dan presensi dari Cloud Firestore.
+            </Text>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!sesiAktif) {
     return (
@@ -374,8 +269,21 @@ export default function SesiDetailPraktikanScreen() {
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>Sesi tidak ditemukan</Text>
             <Text style={styles.emptyBody}>
-              Data sesi praktikum yang kamu pilih tidak tersedia.
+              {error ??
+                'Data sesi praktikum yang kamu pilih tidak tersedia atau bukan bagian dari kelasmu.'}
             </Text>
+            {error ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={muatUlangData}
+                style={({ pressed }) => [
+                  styles.primaryButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.primaryButtonText}>Muat Ulang Data</Text>
+              </Pressable>
+            ) : null}
             <Pressable
               accessibilityRole="button"
               onPress={kembaliKeJadwal}
@@ -392,28 +300,37 @@ export default function SesiDetailPraktikanScreen() {
     );
   }
 
-  const namaPraktikum = ambilNamaPraktikum(sesiAktif.praktikumId);
+  const namaPraktikum = ambilNamaPraktikum(
+    praktikum,
+    sesiAktif.praktikumId,
+    sesiAktif.namaPraktikum,
+  );
   const sudahPresensi = Boolean(presensiSaya);
+  const izinDiterima = izinSaya?.status === 'diterima';
   const jamHadir = presensiSaya ? formatJamPresensi(presensiSaya.waktu) : '';
 
   const teksBanner =
     sesiAktif.status === 'belum_dibuka'
       ? 'Sesi belum dibuka'
-      : sesiAktif.status === 'dibuka' && !sudahPresensi
-        ? 'Sesi dibuka, silakan presensi.'
-        : sesiAktif.status === 'dibuka' && sudahPresensi
-          ? `Kamu sudah presensi pukul ${jamHadir}`
-          : 'Sesi telah ditutup';
+      : sudahPresensi
+        ? `Kamu sudah presensi pukul ${jamHadir} WIB`
+        : izinDiterima
+          ? 'Pengajuan izin kamu telah diterima'
+          : sesiAktif.status === 'dibuka'
+            ? 'Sesi dibuka, silakan presensi.'
+            : 'Sesi telah ditutup';
 
   const subTeksBanner =
     sesiAktif.status === 'belum_dibuka'
       ? 'Tombol presensi akan aktif setelah asisten membuka sesi praktikum ini.'
-      : sesiAktif.status === 'dibuka' && !sudahPresensi
-        ? 'Pastikan kamu berada di ruang praktikum dan siap memasukkan kode presensi dari asisten.'
-        : sesiAktif.status === 'dibuka' && sudahPresensi
-          ? `Kehadiran atas nama ${PRAKTIKAN_AKTIF.nama} (${PRAKTIKAN_AKTIF.nim}) telah tercatat.`
-          : sudahPresensi
-            ? `Kamu tercatat hadir pada sesi ini pukul ${jamHadir}.`
+      : sudahPresensi
+        ? `Kehadiran atas nama ${currentUser.nama}${currentUser.nim ? ` (${currentUser.nim})` : ''} telah tercatat di sistem.`
+        : izinDiterima
+          ? 'Karena izin kamu sudah disetujui oleh asisten, presensi pada sesi ini dinonaktifkan.'
+          : sesiAktif.status === 'dibuka'
+            ? izinSaya?.status === 'menunggu'
+              ? 'Pengajuan izin kamu masih berstatus menunggu. Kamu tetap diperbolehkan melakukan presensi jika hadir di kelas.'
+              : 'Pastikan kamu berada di ruang praktikum dan siap memasukkan 4 digit kode presensi dari asisten.'
             : 'Batas waktu presensi untuk pertemuan ini telah berakhir.';
 
   return (
@@ -438,6 +355,23 @@ export default function SesiDetailPraktikanScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {error ? (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorBannerTitle}>Gangguan Sinkronisasi</Text>
+            <Text style={styles.errorBannerBody}>{error}</Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={muatUlangData}
+              style={({ pressed }) => [
+                styles.bannerInfoButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.bannerInfoButtonText}>Muat Ulang</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         {!paramSesiId && (
           <View style={styles.previewSwitcherCard}>
             <Text style={styles.previewSwitcherLabel}>
@@ -448,7 +382,7 @@ export default function SesiDetailPraktikanScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.previewChipRow}
             >
-              {SESI_CONTOH.map((item) => {
+              {sesi.map((item) => {
                 const aktif = item.id === sesiAktif.id;
                 return (
                   <Pressable
@@ -468,8 +402,12 @@ export default function SesiDetailPraktikanScreen() {
                         aktif && styles.previewChipTextActive,
                       ]}
                     >
-                      {ambilNamaPraktikum(item.praktikumId)} P{item.pertemuanKe}{' '}
-                      ({LABEL_STATUS[item.status]})
+                      {ambilNamaPraktikum(
+                        praktikum,
+                        item.praktikumId,
+                        item.namaPraktikum,
+                      )}{' '}
+                      P{item.pertemuanKe} ({LABEL_STATUS[item.status]})
                     </Text>
                   </Pressable>
                 );
@@ -495,13 +433,13 @@ export default function SesiDetailPraktikanScreen() {
             <InfoRow label="Ruang Lab" value={sesiAktif.lab} />
             <InfoRow
               label="Tanggal"
-              value={formatTanggal(sesiAktif.tanggal)}
+              value={formatTanggalIndonesia(sesiAktif.tanggal)}
             />
             <InfoRow
               label="Waktu"
               value={formatRentangJam(
                 sesiAktif.jamMulai,
-                sesiAktif.jamSelesai
+                sesiAktif.jamSelesai,
               )}
             />
             {sesiAktif.catatan ? (
@@ -531,8 +469,9 @@ export default function SesiDetailPraktikanScreen() {
             styles.statusBanner,
             sesiAktif.status === 'dibuka' &&
               !sudahPresensi &&
+              !izinDiterima &&
               styles.statusBannerOpen,
-            sudahPresensi && styles.statusBannerAttended,
+            (sudahPresensi || izinDiterima) && styles.statusBannerAttended,
             sesiAktif.status === 'ditutup' && styles.statusBannerClosed,
           ]}
         >
@@ -549,6 +488,7 @@ export default function SesiDetailPraktikanScreen() {
           <Text style={styles.bannerSubTitle}>{subTeksBanner}</Text>
 
           {(sudahPresensi ||
+            izinDiterima ||
             sesiAktif.status === 'belum_dibuka' ||
             sesiAktif.status === 'ditutup') && (
             <Pressable
@@ -591,21 +531,35 @@ export default function SesiDetailPraktikanScreen() {
             </Pressable>
           )}
 
-          {sesiAktif.status === 'dibuka' && !sudahPresensi && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Presensi Sekarang"
-              onPress={handlePresensiSekarang}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.primaryButtonText}>Presensi Sekarang</Text>
-            </Pressable>
-          )}
+          {sesiAktif.status === 'dibuka' &&
+            !sudahPresensi &&
+            !izinDiterima && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Presensi Sekarang"
+                accessibilityState={{ disabled: isSubmittingPresensi }}
+                disabled={isSubmittingPresensi}
+                onPress={handlePresensiSekarang}
+                style={({ pressed }) => [
+                  styles.primaryButton,
+                  isSubmittingPresensi && styles.disabledButton,
+                  pressed && !isSubmittingPresensi && styles.pressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.primaryButtonText,
+                    isSubmittingPresensi && styles.disabledButtonText,
+                  ]}
+                >
+                  {isSubmittingPresensi
+                    ? 'Menyimpan Presensi...'
+                    : 'Presensi Sekarang'}
+                </Text>
+              </Pressable>
+            )}
 
-          {sesiAktif.status === 'dibuka' && sudahPresensi && (
+          {sesiAktif.status === 'dibuka' && (sudahPresensi || izinDiterima) && (
             <Pressable
               accessibilityRole="button"
               accessibilityState={{ disabled: true }}
@@ -615,7 +569,7 @@ export default function SesiDetailPraktikanScreen() {
               <Text
                 style={[styles.primaryButtonText, styles.disabledButtonText]}
               >
-                Sudah presensi
+                {sudahPresensi ? 'Sudah presensi' : 'Izin diterima'}
               </Text>
             </Pressable>
           )}
@@ -628,7 +582,7 @@ export default function SesiDetailPraktikanScreen() {
         pertemuanKe={sesiAktif.pertemuanKe}
         kelas={sesiAktif.kelas}
         lab={sesiAktif.lab}
-        petunjukKodeDemo={sesiAktif.kodePresensi}
+        isSubmitting={isSubmittingPresensi}
         onClose={() => setFormTerbuka(false)}
         onSubmitKode={handleSubmitKode}
       />
@@ -697,6 +651,24 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 24,
     gap: 16,
+  },
+  errorBanner: {
+    backgroundColor: WARNA.surface,
+    borderColor: WARNA.primary,
+    borderWidth: 1.5,
+    borderRadius: 18,
+    padding: 16,
+    gap: 6,
+  },
+  errorBannerTitle: {
+    color: WARNA.primary,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  errorBannerBody: {
+    color: WARNA.text,
+    fontSize: 13,
+    lineHeight: 19,
   },
   previewSwitcherCard: {
     backgroundColor: WARNA.surface,

@@ -14,8 +14,11 @@ const WARNA = {
 
 export type AlasanPenolakanPresensi =
   | 'sudah_presensi'
+  | 'izin_diterima'
   | 'belum_dibuka'
-  | 'sudah_ditutup';
+  | 'sudah_ditutup'
+  | 'belum_login'
+  | 'gagal_jaringan';
 
 export type DataSuksesPresensi = {
   namaPraktikan: string;
@@ -31,10 +34,21 @@ function formatWaktuLengkap(waktuIso: string): string {
   if (Number.isNaN(date.getTime())) {
     return '08.03.12 WIB';
   }
-  const jam = String(date.getHours()).padStart(2, '0');
-  const menit = String(date.getMinutes()).padStart(2, '0');
-  const detik = String(date.getSeconds()).padStart(2, '0');
-  return `${jam}.${menit}.${detik} WIB`;
+  try {
+    const formatter = new Intl.DateTimeFormat('id-ID', {
+      timeZone: 'Asia/Jakarta',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+    return `${formatter.format(date).replace(/:/g, '.')} WIB`;
+  } catch {
+    const jam = String(date.getHours()).padStart(2, '0');
+    const menit = String(date.getMinutes()).padStart(2, '0');
+    const detik = String(date.getSeconds()).padStart(2, '0');
+    return `${jam}.${menit}.${detik} WIB`;
+  }
 }
 
 export function PresensiSuccessModal({
@@ -73,7 +87,8 @@ export function PresensiSuccessModal({
           <View style={styles.headerBlock}>
             <Text style={styles.modalTitle}>Presensi Berhasil</Text>
             <Text style={styles.modalSubtitle}>
-              Kehadiran kamu pada sesi praktikum ini telah berhasil tercatat.
+              Kehadiran kamu pada sesi praktikum ini telah berhasil tercatat di
+              sistem.
             </Text>
           </View>
 
@@ -133,6 +148,12 @@ const INFO_PENOLAKAN: Record<
     deskripsi:
       'Presensi kedua pada sesi yang sama ditolak. Setiap praktikan hanya diperbolehkan melakukan presensi satu kali per sesi.',
   },
+  izin_diterima: {
+    badge: 'IZIN DISETUJUI',
+    judul: 'Presensi Diblokir',
+    deskripsi:
+      'Pengajuan izin kamu pada sesi ini sudah diterima oleh asisten, sehingga kamu tidak dapat melakukan presensi.',
+  },
   belum_dibuka: {
     badge: 'BELUM DIBUKA',
     judul: 'Sesi Belum Dibuka',
@@ -144,6 +165,18 @@ const INFO_PENOLAKAN: Record<
     judul: 'Sesi Telah Ditutup',
     deskripsi:
       'Presensi tidak dapat dilakukan lagi karena sesi praktikum ini telah ditutup oleh asisten.',
+  },
+  belum_login: {
+    badge: 'BELUM MASUK',
+    judul: 'Akun Belum Terautentikasi',
+    deskripsi:
+      'Silakan masuk menggunakan akun Praktikan terlebih dahulu sebelum melakukan presensi.',
+  },
+  gagal_jaringan: {
+    badge: 'GANGGUAN KONEKSI',
+    judul: 'Gagal Menyimpan Presensi',
+    deskripsi:
+      'Terjadi kendala saat menghubungi Cloud Firestore. Periksa koneksi internet kamu lalu coba kembali.',
   },
 };
 

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Pressable,
   ScrollView,
@@ -9,176 +10,29 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import {
+  ambilNamaDepan,
+  ambilNamaPraktikum,
+  ambilTanggalHariIniJakarta,
+  formatJamPresensi,
+  formatRentangJam,
+  formatTanggalIndonesia,
+  LABEL_STATUS,
+  TANGGAL_HARI_INI,
+  usePraktikanStore,
+  WARNA,
+  type PengajuanIzinRingkas,
+  type Praktikum,
+  type Presensi,
+  type Role,
+  type Sesi,
+  type SesiStatus,
+  type User,
+} from '../../components/praktikan/praktikanStore';
 
-export type Role = 'asisten' | 'praktikan';
-
-export type User = {
-  id: string;
-  nama: string;
-  role: Role;
-  nim?: string;
-};
-
-export type Praktikum = {
-  id: string;
-  nama: string;
-  lab: string;
-};
-
-export type SesiStatus = 'belum_dibuka' | 'dibuka' | 'ditutup';
-
-export type Sesi = {
-  id: string;
-  praktikumId: string;
-  pertemuanKe: number;
-  kelas: string;
-  lab: string;
-  tanggal: string;
-  jamMulai: string;
-  jamSelesai: string;
-  status: SesiStatus;
-  kodePresensi?: string;
-  catatan?: string;
-  hadir?: number;
-  total?: number;
-};
-
-export type Presensi = {
-  id: string;
-  sesiId: string;
-  userId: string;
-  waktu: string;
-};
+export type { Praktikum, Presensi, Role, Sesi, SesiStatus, User };
 
 type FilterJadwal = 'semua' | 'hari_ini' | SesiStatus;
-
-const WARNA = {
-  bg: '#FFFFFF',
-  surface: '#FEFFE0',
-  text: '#17454A',
-  textMuted: 'rgba(23, 69, 74, 0.7)',
-  primary: '#B5185F',
-  highlight: '#D0E86E',
-  accent: '#35C1C2',
-  border: 'rgba(23, 69, 74, 0.15)',
-  softSurface: '#F5F8F4',
-} as const;
-
-const TANGGAL_HARI_INI = '2026-10-23';
-
-// Data sementara untuk Tugas C1 sesuai kontrak Bagian 5 PRD.md.
-// Akan disambungkan ke useApp() dari AppContext setelah tugas Dev A di-merge.
-const PRAKTIKAN_AKTIF: User = {
-  id: 'praktikan-01',
-  nama: 'Siti Aisyah',
-  role: 'praktikan',
-  nim: '2210512001',
-};
-
-const DAFTAR_PRAKTIKUM: Record<string, Praktikum> = {
-  'prak-01': {
-    id: 'prak-01',
-    nama: 'Basis Data',
-    lab: 'Lab Komputer 2',
-  },
-  'prak-02': {
-    id: 'prak-02',
-    nama: 'Pemrograman Web',
-    lab: 'Lab Komputer 1',
-  },
-  'prak-03': {
-    id: 'prak-03',
-    nama: 'Jaringan Komputer',
-    lab: 'Lab Jaringan',
-  },
-};
-
-const SESI_CONTOH: Sesi[] = [
-  {
-    id: 'sesi-01',
-    praktikumId: 'prak-01',
-    pertemuanKe: 3,
-    kelas: 'A',
-    lab: 'Lab Komputer 2',
-    tanggal: '2026-10-23',
-    jamMulai: '08:00',
-    jamSelesai: '10:00',
-    status: 'dibuka',
-    kodePresensi: '4827',
-    catatan: 'Normalisasi basis data',
-    hadir: 12,
-    total: 30,
-  },
-  {
-    id: 'sesi-02',
-    praktikumId: 'prak-02',
-    pertemuanKe: 2,
-    kelas: 'B',
-    lab: 'Lab Komputer 1',
-    tanggal: '2026-10-24',
-    jamMulai: '10:00',
-    jamSelesai: '12:00',
-    status: 'belum_dibuka',
-    hadir: 0,
-    total: 28,
-  },
-  {
-    id: 'sesi-03',
-    praktikumId: 'prak-03',
-    pertemuanKe: 4,
-    kelas: 'A',
-    lab: 'Lab Jaringan',
-    tanggal: '2026-10-25',
-    jamMulai: '13:00',
-    jamSelesai: '15:00',
-    status: 'belum_dibuka',
-    hadir: 0,
-    total: 26,
-  },
-  {
-    id: 'sesi-04',
-    praktikumId: 'prak-01',
-    pertemuanKe: 2,
-    kelas: 'A',
-    lab: 'Lab Komputer 2',
-    tanggal: '2026-10-20',
-    jamMulai: '08:00',
-    jamSelesai: '10:00',
-    status: 'ditutup',
-    catatan: 'Model relasional dan kunci primer',
-    hadir: 26,
-    total: 30,
-  },
-  {
-    id: 'sesi-05',
-    praktikumId: 'prak-02',
-    pertemuanKe: 1,
-    kelas: 'B',
-    lab: 'Lab Komputer 1',
-    tanggal: '2026-10-18',
-    jamMulai: '10:00',
-    jamSelesai: '12:00',
-    status: 'ditutup',
-    catatan: 'Struktur dasar dokumen HTML dan CSS',
-    hadir: 24,
-    total: 28,
-  },
-];
-
-const PRESENSI_CONTOH: Presensi[] = [
-  {
-    id: 'presensi-01',
-    sesiId: 'sesi-04',
-    userId: 'praktikan-01',
-    waktu: '2026-10-20T08:03:12+07:00',
-  },
-];
-
-const LABEL_STATUS: Record<SesiStatus, string> = {
-  belum_dibuka: 'Belum dibuka',
-  dibuka: 'Dibuka',
-  ditutup: 'Ditutup',
-};
 
 const LABEL_FILTER: Record<FilterJadwal, string> = {
   semua: 'Semua',
@@ -193,42 +47,6 @@ const URUTAN_STATUS: Record<SesiStatus, number> = {
   belum_dibuka: 1,
   ditutup: 2,
 };
-
-function ambilNamaDepan(namaLengkap: string): string {
-  const bagian = namaLengkap.trim().split(/\s+/);
-  return bagian[0] || namaLengkap;
-}
-
-function ambilNamaPraktikum(praktikumId: string): string {
-  return DAFTAR_PRAKTIKUM[praktikumId]?.nama ?? 'Praktikum';
-}
-
-function formatTanggal(tanggal: string): string {
-  const [tahun, bulan, hari] = tanggal.split('-').map(Number);
-  const date = new Date(tahun, bulan - 1, hari);
-
-  return date
-    .toLocaleDateString('id-ID', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-    })
-    .replace('.', '');
-}
-
-function formatRentangJam(jamMulai: string, jamSelesai: string): string {
-  return `${jamMulai.replace(':', '.')} - ${jamSelesai.replace(':', '.')}`;
-}
-
-function formatJamPresensi(waktuIso: string): string {
-  const date = new Date(waktuIso);
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-  const jam = String(date.getHours()).padStart(2, '0');
-  const menit = String(date.getMinutes()).padStart(2, '0');
-  return `${jam}.${menit}`;
-}
 
 export function StatusBadge({ status }: { status: SesiStatus }) {
   return (
@@ -293,6 +111,7 @@ export function SessionCard({
   role = 'praktikan',
   sudahPresensi = false,
   waktuPresensi,
+  izinRingkas,
   onPress,
 }: {
   sesi: Sesi;
@@ -300,6 +119,7 @@ export function SessionCard({
   role?: Role;
   sudahPresensi?: boolean;
   waktuPresensi?: string;
+  izinRingkas?: PengajuanIzinRingkas;
   onPress: () => void;
 }) {
   const jamHadir = waktuPresensi ? formatJamPresensi(waktuPresensi) : '';
@@ -335,7 +155,9 @@ export function SessionCard({
 
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>Tanggal</Text>
-          <Text style={styles.detailValue}>{formatTanggal(sesi.tanggal)}</Text>
+          <Text style={styles.detailValue}>
+            {formatTanggalIndonesia(sesi.tanggal)}
+          </Text>
         </View>
 
         <View style={styles.detailRow}>
@@ -352,14 +174,21 @@ export function SessionCard({
             <View style={styles.attendedPill}>
               <Text style={styles.attendedCheck}>✓</Text>
               <Text style={styles.attendedText}>
-                Sudah presensi{jamHadir ? ` · ${jamHadir}` : ''}
+                Sudah presensi{jamHadir ? ` · ${jamHadir} WIB` : ''}
               </Text>
+            </View>
+          ) : izinRingkas?.status === 'diterima' ? (
+            <View style={styles.attendedPill}>
+              <Text style={styles.attendedCheck}>✓</Text>
+              <Text style={styles.attendedText}>Izin disetujui asisten</Text>
             </View>
           ) : sesi.status === 'dibuka' ? (
             <View style={styles.openPromptRow}>
               <View style={styles.openPromptBadge}>
                 <Text style={styles.openPromptText}>
-                  Sesi aktif · Ketuk untuk presensi
+                  {izinRingkas?.status === 'menunggu'
+                    ? 'Izin menunggu · Presensi tetap dapat dilakukan'
+                    : 'Sesi aktif · Ketuk untuk presensi'}
                 </Text>
               </View>
             </View>
@@ -394,9 +223,9 @@ function EmptyJadwalState({
       </View>
       <Text style={styles.emptyTitle}>Tidak ada jadwal praktikum</Text>
       <Text style={styles.emptyBody}>
-        Tidak ditemukan sesi untuk filter {'"'}
-        {LABEL_FILTER[filter]}
-        {'"'}.
+        {filter === 'semua'
+          ? 'Belum ada jadwal sesi praktikum yang terdaftar untuk kelas akun kamu.'
+          : `Tidak ditemukan sesi untuk filter "${LABEL_FILTER[filter]}".`}
       </Text>
       {filter !== 'semua' && (
         <Pressable
@@ -415,27 +244,42 @@ function EmptyJadwalState({
 }
 
 export default function PraktikanJadwalScreen() {
+  const {
+    currentUser,
+    isAuthenticated,
+    isLoading,
+    error,
+    praktikum,
+    sesi,
+    presensi,
+    pengajuanIzinMap,
+    muatUlangData,
+  } = usePraktikanStore();
   const [filterAktif, setFilterAktif] = useState<FilterJadwal>('semua');
+
+  const tanggalJakarta = useMemo(() => ambilTanggalHariIniJakarta(), []);
 
   const petaPresensiSaya = useMemo(() => {
     const map = new Map<string, Presensi>();
-    for (const item of PRESENSI_CONTOH) {
-      if (item.userId === PRAKTIKAN_AKTIF.id) {
+    for (const item of presensi) {
+      if (item.userId === currentUser.id) {
         map.set(item.sesiId, item);
       }
     }
     return map;
-  }, []);
+  }, [currentUser.id, presensi]);
 
   const daftarSesiTerurut = useMemo(() => {
-    const hasilFilter = SESI_CONTOH.filter((sesi) => {
+    const hasilFilter = sesi.filter((item) => {
       if (filterAktif === 'semua') {
         return true;
       }
       if (filterAktif === 'hari_ini') {
-        return sesi.tanggal === TANGGAL_HARI_INI;
+        return (
+          item.tanggal === tanggalJakarta || item.tanggal === TANGGAL_HARI_INI
+        );
       }
-      return sesi.status === filterAktif;
+      return item.status === filterAktif;
     });
 
     return [...hasilFilter].sort((a, b) => {
@@ -445,12 +289,17 @@ export default function PraktikanJadwalScreen() {
       }
       return a.tanggal.localeCompare(b.tanggal);
     });
-  }, [filterAktif]);
+  }, [filterAktif, sesi, tanggalJakarta]);
 
   const sesiDibuka = useMemo(
-    () => SESI_CONTOH.find((sesi) => sesi.status === 'dibuka'),
-    []
+    () => sesi.find((item) => item.status === 'dibuka'),
+    [sesi],
   );
+
+  const labelKelasAktif = useMemo(() => {
+    const unik = Array.from(new Set(sesi.map((item) => item.kelas))).sort();
+    return unik.length > 0 ? `Kelas ${unik.join(', ')}` : 'Kelas Praktikan';
+  }, [sesi]);
 
   const bukaDetailSesi = (sesiId: string) => {
     router.push({
@@ -459,10 +308,36 @@ export default function PraktikanJadwalScreen() {
     });
   };
 
+  if (!isAuthenticated) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.stateWrapper}>
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>Akun Belum Masuk</Text>
+            <Text style={styles.emptyBody}>
+              Silakan masuk menggunakan akun Praktikan terlebih dahulu untuk
+              melihat jadwal dan sesi praktikum kelasmu.
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.replace('/')}
+              style={({ pressed }) => [
+                styles.resetButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.resetButtonText}>Ke Halaman Masuk</Text>
+            </Pressable>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <FlatList
-        data={daftarSesiTerurut}
+        data={isLoading ? [] : daftarSesiTerurut}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
@@ -472,7 +347,7 @@ export default function PraktikanJadwalScreen() {
               <Text style={styles.screenTitle}>Jadwal Praktikum</Text>
               <View style={styles.greetingRow}>
                 <Text style={styles.greetingText}>
-                  Halo, {ambilNamaDepan(PRAKTIKAN_AKTIF.nama)}
+                  Halo, {ambilNamaDepan(currentUser.nama)} · {labelKelasAktif}
                 </Text>
                 <View style={styles.roleChip}>
                   <Text style={styles.roleChipText}>Praktikan</Text>
@@ -480,10 +355,30 @@ export default function PraktikanJadwalScreen() {
               </View>
             </View>
 
-            {sesiDibuka && (
+            {error ? (
+              <View style={styles.errorBanner}>
+                <Text style={styles.errorBannerTitle}>
+                  Gagal Memuat Data Cloud Firestore
+                </Text>
+                <Text style={styles.errorBannerBody}>{error}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Muat ulang jadwal praktikum"
+                  onPress={muatUlangData}
+                  style={({ pressed }) => [
+                    styles.retryButton,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.retryButtonText}>Muat Ulang</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            {!isLoading && sesiDibuka && (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Sesi sedang dibuka: ${ambilNamaPraktikum(sesiDibuka.praktikumId)} pertemuan ${sesiDibuka.pertemuanKe}. Ketuk untuk membuka detail dan presensi.`}
+                accessibilityLabel={`Sesi sedang dibuka: ${ambilNamaPraktikum(praktikum, sesiDibuka.praktikumId, sesiDibuka.namaPraktikum)} pertemuan ${sesiDibuka.pertemuanKe}. Ketuk untuk membuka detail dan presensi.`}
                 onPress={() => bukaDetailSesi(sesiDibuka.id)}
                 style={({ pressed }) => [
                   styles.activeBanner,
@@ -495,14 +390,18 @@ export default function PraktikanJadwalScreen() {
                   <Text style={styles.activeBannerTime}>
                     {formatRentangJam(
                       sesiDibuka.jamMulai,
-                      sesiDibuka.jamSelesai
+                      sesiDibuka.jamSelesai,
                     )}
                   </Text>
                 </View>
 
                 <Text style={styles.activeBannerTitle}>
-                  {ambilNamaPraktikum(sesiDibuka.praktikumId)} · Pertemuan{' '}
-                  {sesiDibuka.pertemuanKe}
+                  {ambilNamaPraktikum(
+                    praktikum,
+                    sesiDibuka.praktikumId,
+                    sesiDibuka.namaPraktikum,
+                  )}{' '}
+                  · Pertemuan {sesiDibuka.pertemuanKe}
                 </Text>
                 <Text style={styles.activeBannerSub}>
                   Kelas {sesiDibuka.kelas} · {sesiDibuka.lab}
@@ -512,7 +411,9 @@ export default function PraktikanJadwalScreen() {
                   <Text style={styles.activeBannerCtaText}>
                     {petaPresensiSaya.has(sesiDibuka.id)
                       ? '✓ Kamu sudah presensi pada sesi ini'
-                      : 'Sesi sedang berlangsung, ketuk untuk isi presensi'}
+                      : pengajuanIzinMap[sesiDibuka.id]?.status === 'diterima'
+                        ? '✓ Izin kamu pada sesi ini telah disetujui'
+                        : 'Sesi sedang berlangsung, ketuk untuk isi presensi'}
                   </Text>
                 </View>
               </Pressable>
@@ -538,7 +439,7 @@ export default function PraktikanJadwalScreen() {
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>Daftar Sesi</Text>
               <Text style={styles.sectionCount}>
-                {daftarSesiTerurut.length} sesi
+                {isLoading ? 'Memuat...' : `${daftarSesiTerurut.length} sesi`}
               </Text>
             </View>
           </View>
@@ -548,19 +449,34 @@ export default function PraktikanJadwalScreen() {
           return (
             <SessionCard
               sesi={item}
-              namaPraktikum={ambilNamaPraktikum(item.praktikumId)}
+              namaPraktikum={ambilNamaPraktikum(
+                praktikum,
+                item.praktikumId,
+                item.namaPraktikum,
+              )}
               role="praktikan"
               sudahPresensi={Boolean(dataPresensi)}
               waktuPresensi={dataPresensi?.waktu}
+              izinRingkas={pengajuanIzinMap[item.id]}
               onPress={() => bukaDetailSesi(item.id)}
             />
           );
         }}
         ListEmptyComponent={
-          <EmptyJadwalState
-            filter={filterAktif}
-            onReset={() => setFilterAktif('semua')}
-          />
+          isLoading ? (
+            <View style={styles.loadingCard}>
+              <ActivityIndicator size="small" color={WARNA.primary} />
+              <Text style={styles.loadingTitle}>Memuat jadwal praktikum...</Text>
+              <Text style={styles.loadingBody}>
+                Menyinkronkan data sesi dan kelas kamu secara real-time.
+              </Text>
+            </View>
+          ) : (
+            <EmptyJadwalState
+              filter={filterAktif}
+              onReset={() => setFilterAktif('semua')}
+            />
+          )
         }
       />
     </SafeAreaView>
@@ -571,6 +487,11 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: WARNA.bg,
+  },
+  stateWrapper: {
+    flex: 1,
+    paddingHorizontal: 18,
+    justifyContent: 'center',
   },
   listContainer: {
     paddingHorizontal: 18,
@@ -599,8 +520,9 @@ const styles = StyleSheet.create({
   },
   greetingText: {
     color: WARNA.textMuted,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
+    flex: 1,
   },
   roleChip: {
     backgroundColor: WARNA.surface,
@@ -613,6 +535,41 @@ const styles = StyleSheet.create({
   roleChipText: {
     color: WARNA.text,
     fontSize: 12,
+    fontWeight: '700',
+  },
+  errorBanner: {
+    backgroundColor: WARNA.surface,
+    borderColor: WARNA.primary,
+    borderWidth: 1.5,
+    borderRadius: 18,
+    padding: 16,
+    gap: 8,
+  },
+  errorBannerTitle: {
+    color: WARNA.primary,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  errorBannerBody: {
+    color: WARNA.text,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '500',
+  },
+  retryButton: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: WARNA.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  retryButtonText: {
+    color: WARNA.surface,
+    fontSize: 13,
     fontWeight: '700',
   },
   activeBanner: {
@@ -854,6 +811,27 @@ const styles = StyleSheet.create({
   },
   statusText_ditutup: {
     color: WARNA.surface,
+  },
+  loadingCard: {
+    backgroundColor: WARNA.surface,
+    borderColor: WARNA.border,
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    gap: 10,
+  },
+  loadingTitle: {
+    color: WARNA.text,
+    fontSize: 16,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  loadingBody: {
+    color: WARNA.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
   },
   emptyCard: {
     backgroundColor: WARNA.surface,
