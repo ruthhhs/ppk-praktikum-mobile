@@ -8,10 +8,13 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import PresensiFormModal, {
   type HasilSubmitKode,
 } from '../../components/praktikan/PresensiFormModal';
+import PengajuanIzinFormModal, {
+  type HasilSubmitIzinModal,
+} from '../../components/praktikan/PengajuanIzinFormModal';
 import {
   PresensiInfoModal,
   PresensiSuccessModal,
@@ -23,7 +26,9 @@ import {
   formatJamPresensi,
   formatRentangJam,
   formatTanggalIndonesia,
+  formatWaktuLengkapWib,
   LABEL_STATUS,
+  LABEL_STATUS_IZIN,
   normalisasiIdSesiLokal,
   usePraktikanStore,
   WARNA,
@@ -77,12 +82,14 @@ export default function SesiDetailPraktikanScreen() {
     isAuthenticated,
     isLoading,
     isSubmittingPresensi,
+    isSubmittingIzin,
     error,
     praktikum,
     sesi,
     presensi,
     pengajuanIzinMap,
     catatPresensiPraktikan,
+    ajukanIzinPraktikan,
     muatUlangData,
   } = usePraktikanStore();
 
@@ -95,6 +102,8 @@ export default function SesiDetailPraktikanScreen() {
     paramSesiId ?? normalisasiIdSesiLokal(paramSesiId),
   );
   const [formTerbuka, setFormTerbuka] = useState(false);
+  const [formIzinTerbuka, setFormIzinTerbuka] = useState(false);
+  const [pesanSuksesIzin, setPesanSuksesIzin] = useState<string | null>(null);
   const [dataSuksesModal, setDataSuksesModal] =
     useState<DataSuksesPresensi | null>(null);
   const [alasanInfoModal, setAlasanInfoModal] =
@@ -213,6 +222,30 @@ export default function SesiDetailPraktikanScreen() {
       kelas: sesiAktif.kelas,
       waktuIso: hasil.presensi.waktu,
     });
+    return { ok: true };
+  };
+
+  const handleSubmitIzinModal = async (
+    alasan: string,
+  ): Promise<HasilSubmitIzinModal> => {
+    if (!sesiAktif) {
+      setFormIzinTerbuka(false);
+      return { ok: false };
+    }
+
+    const hasil = await ajukanIzinPraktikan(sesiAktif.id, alasan);
+    if (!hasil.ok) {
+      return {
+        ok: false,
+        pesanErrorInput: hasil.pesan,
+      };
+    }
+
+    setFormIzinTerbuka(false);
+    setPesanSuksesIzin(
+      hasil.pesanKlasifikasi ??
+        'Pengajuan izin berhasil dikirim dan menunggu pemeriksaan asisten.',
+    );
     return { ok: true };
   };
 
@@ -512,6 +545,151 @@ export default function SesiDetailPraktikanScreen() {
             </Pressable>
           )}
         </View>
+
+        <View style={styles.izinSectionCard}>
+          <View style={styles.izinHeaderRow}>
+            <View style={styles.titleColumn}>
+              <Text style={styles.izinSectionTitle}>
+                Pengajuan Izin Ketidakhadiran
+              </Text>
+              <Text style={styles.izinSectionSub}>
+                Berhalangan hadir pada pertemuan ini? Ajukan izin sebelum sesi
+                ditutup.
+              </Text>
+            </View>
+            {izinSaya ? (
+              <View
+                style={[
+                  styles.izinStatusBadge,
+                  izinSaya.status === 'menunggu' &&
+                    styles.izinStatusBadgeMenunggu,
+                  izinSaya.status === 'diterima' &&
+                    styles.izinStatusBadgeDiterima,
+                  izinSaya.status === 'ditolak' &&
+                    styles.izinStatusBadgeDitolak,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.izinStatusBadgeText,
+                    izinSaya.status === 'menunggu' &&
+                      styles.izinStatusBadgeTextMenunggu,
+                    izinSaya.status === 'diterima' &&
+                      styles.izinStatusBadgeTextDiterima,
+                    izinSaya.status === 'ditolak' &&
+                      styles.izinStatusBadgeTextDitolak,
+                  ]}
+                >
+                  {LABEL_STATUS_IZIN[izinSaya.status]}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          {pesanSuksesIzin ? (
+            <View style={styles.izinFeedbackNotice}>
+              <Text style={styles.izinFeedbackText}>{pesanSuksesIzin}</Text>
+            </View>
+          ) : null}
+
+          {izinSaya ? (
+            <View style={styles.izinSubmittedDetailBox}>
+              <Text style={styles.izinDetailLabel}>
+                Alasan Ketidakhadiran (Terkunci):
+              </Text>
+              <Text style={styles.izinDetailReason}>{izinSaya.alasan}</Text>
+
+              <View style={styles.izinAiRow}>
+                <Text style={styles.izinAiLabel}>Informasi Pendukung AI:</Text>
+                <Text style={styles.izinAiValue}>
+                  {izinSaya.statusKlasifikasi === 'berhasil' &&
+                  izinSaya.kategoriAI
+                    ? `Kategori: ${izinSaya.kategoriAI}`
+                    : 'Klasifikasi AI belum tersedia (ditinjau manual asisten)'}
+                </Text>
+              </View>
+
+              <Text style={styles.izinMetaTime}>
+                Diajukan: {formatWaktuLengkapWib(izinSaya.createdAt)}
+              </Text>
+              {izinSaya.reviewedAt ? (
+                <Text style={styles.izinMetaTime}>
+                  Diperiksa asisten:{' '}
+                  {formatWaktuLengkapWib(izinSaya.reviewedAt)}
+                </Text>
+              ) : (
+                <Text style={styles.izinMetaNote}>
+                  {izinSaya.status === 'menunggu'
+                    ? 'Selama status izin masih Menunggu, kamu tetap dapat melakukan presensi apabila hadir di laboratorium.'
+                    : 'Keputusan pemeriksaan asisten telah disimpan.'}
+                </Text>
+              )}
+
+              <Pressable
+                accessibilityRole="button"
+                onPress={() =>
+                  router.push('/praktikan/izin' as unknown as Href)
+                }
+                style={({ pressed }) => [
+                  styles.secondaryOutlineBtn,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.secondaryOutlineBtnText}>
+                  Kelola & Lihat Semua Pengajuan Izin
+                </Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.izinActionBlock}>
+              {sesiAktif.status === 'ditutup' ? (
+                <Text style={styles.izinUnavailableNote}>
+                  Pengajuan izin tidak tersedia karena sesi praktikum ini telah
+                  ditutup.
+                </Text>
+              ) : sudahPresensi ? (
+                <Text style={styles.izinUnavailableNote}>
+                  Kamu sudah tercatat hadir pada sesi ini sehingga pengajuan
+                  izin dinonaktifkan.
+                </Text>
+              ) : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Ajukan Izin Ketidakhadiran"
+                  onPress={() => {
+                    setPesanSuksesIzin(null);
+                    setFormIzinTerbuka(true);
+                  }}
+                  style={({ pressed }) => [
+                    styles.izinOpenModalBtn,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.izinOpenModalBtnText}>
+                    Ajukan Izin Ketidakhadiran
+                  </Text>
+                </Pressable>
+              )}
+
+              <Pressable
+                accessibilityRole="button"
+                onPress={() =>
+                  router.push(
+                    `/praktikan/izin?sesiId=${encodeURIComponent(sesiAktif.id)}` as unknown as Href,
+                  )
+                }
+                style={({ pressed }) => [
+                  styles.secondaryOutlineBtn,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.secondaryOutlineBtnText}>
+                  Buka Halaman Pengajuan Izin
+                </Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
       </ScrollView>
 
       {sesiAktif.status !== 'ditutup' && (
@@ -600,6 +778,18 @@ export default function SesiDetailPraktikanScreen() {
         pertemuanKe={sesiAktif.pertemuanKe}
         waktuTercatatIso={presensiSaya?.waktu}
         onClose={() => setAlasanInfoModal(null)}
+      />
+
+      <PengajuanIzinFormModal
+        visible={formIzinTerbuka}
+        namaPraktikum={namaPraktikum}
+        pertemuanKe={sesiAktif.pertemuanKe}
+        kelas={sesiAktif.kelas}
+        lab={sesiAktif.lab}
+        tanggalFormatted={`${formatTanggalIndonesia(sesiAktif.tanggal)} · ${formatRentangJam(sesiAktif.jamMulai, sesiAktif.jamSelesai)}`}
+        isSubmitting={isSubmittingIzin}
+        onClose={() => setFormIzinTerbuka(false)}
+        onSubmitIzin={handleSubmitIzinModal}
       />
     </SafeAreaView>
   );
@@ -865,6 +1055,167 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   bannerInfoButtonText: {
+    color: WARNA.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  izinSectionCard: {
+    backgroundColor: WARNA.surface,
+    borderColor: WARNA.border,
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 18,
+    gap: 12,
+  },
+  izinHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  izinSectionTitle: {
+    color: WARNA.text,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  izinSectionSub: {
+    color: WARNA.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  izinStatusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  izinStatusBadgeMenunggu: {
+    backgroundColor: WARNA.bg,
+    borderColor: WARNA.text,
+  },
+  izinStatusBadgeDiterima: {
+    backgroundColor: WARNA.highlight,
+    borderColor: WARNA.text,
+  },
+  izinStatusBadgeDitolak: {
+    backgroundColor: WARNA.primary,
+    borderColor: WARNA.primary,
+  },
+  izinStatusBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  izinStatusBadgeTextMenunggu: {
+    color: WARNA.text,
+  },
+  izinStatusBadgeTextDiterima: {
+    color: WARNA.text,
+  },
+  izinStatusBadgeTextDitolak: {
+    color: WARNA.bg,
+  },
+  izinFeedbackNotice: {
+    backgroundColor: WARNA.highlight,
+    borderColor: WARNA.text,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  izinFeedbackText: {
+    color: WARNA.text,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  izinSubmittedDetailBox: {
+    backgroundColor: WARNA.bg,
+    borderColor: WARNA.border,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    gap: 8,
+  },
+  izinDetailLabel: {
+    color: WARNA.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  izinDetailReason: {
+    color: WARNA.text,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+  izinAiRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+    backgroundColor: WARNA.surface,
+    borderColor: WARNA.border,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  izinAiLabel: {
+    color: WARNA.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  izinAiValue: {
+    color: WARNA.text,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  izinMetaTime: {
+    color: WARNA.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  izinMetaNote: {
+    color: WARNA.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  izinActionBlock: {
+    gap: 10,
+  },
+  izinUnavailableNote: {
+    color: WARNA.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  izinOpenModalBtn: {
+    minHeight: 46,
+    borderRadius: 14,
+    backgroundColor: WARNA.bg,
+    borderColor: WARNA.primary,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+  },
+  izinOpenModalBtnText: {
+    color: WARNA.primary,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  secondaryOutlineBtn: {
+    minHeight: 42,
+    borderRadius: 12,
+    backgroundColor: WARNA.bg,
+    borderColor: WARNA.border,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  secondaryOutlineBtnText: {
     color: WARNA.text,
     fontSize: 13,
     fontWeight: '700',

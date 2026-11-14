@@ -44,6 +44,20 @@ export default function PraktikanLayout() {
       />
 
       <Tabs.Screen
+        name="izin"
+        options={{
+          title: 'Izin',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons
+              name="document-text-outline"
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
         name="profil"
         options={{
           title: 'Profil',
