@@ -110,12 +110,21 @@ export default function SesiDetailPraktikanScreen() {
     useState<AlasanPenolakanPresensi | null>(null);
 
   const sesiAktif = useMemo(() => {
-    const rawTarget = paramSesiId ?? selectedSesiId;
-    const normTarget = normalisasiIdSesiLokal(rawTarget);
+    if (paramSesiId) {
+      const normParam = normalisasiIdSesiLokal(paramSesiId);
+      return (
+        sesi.find(
+          (item) => item.id === paramSesiId || item.id === normParam,
+        ) ?? null
+      );
+    }
+    const normSelected = normalisasiIdSesiLokal(selectedSesiId);
     return (
       sesi.find(
-        (item) => item.id === rawTarget || item.id === normTarget,
-      ) ?? null
+        (item) => item.id === selectedSesiId || item.id === normSelected,
+      ) ??
+      sesi[0] ??
+      null
     );
   }, [paramSesiId, selectedSesiId, sesi]);
 
@@ -405,7 +414,7 @@ export default function SesiDetailPraktikanScreen() {
           </View>
         ) : null}
 
-        {!paramSesiId && (
+        {!paramSesiId && sesi.length > 1 && (
           <View style={styles.previewSwitcherCard}>
             <Text style={styles.previewSwitcherLabel}>
               Pilih Sesi (Pratinjau Kondisi)

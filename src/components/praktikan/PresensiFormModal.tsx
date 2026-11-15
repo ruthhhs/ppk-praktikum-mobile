@@ -10,17 +10,7 @@ import {
   View,
 } from 'react-native';
 
-const WARNA = {
-  bg: '#FFFFFF',
-  surface: '#FEFFE0',
-  text: '#17454A',
-  textMuted: 'rgba(23, 69, 74, 0.7)',
-  primary: '#B5185F',
-  highlight: '#D0E86E',
-  accent: '#35C1C2',
-  border: 'rgba(23, 69, 74, 0.15)',
-  scrim: 'rgba(23, 69, 74, 0.5)',
-} as const;
+import { WARNA } from './praktikanStore';
 
 export type HasilSubmitKode = {
   ok: boolean;

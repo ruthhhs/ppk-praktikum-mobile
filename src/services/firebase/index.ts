@@ -1,3 +1,8 @@
+import { getApp, getApps, initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { getAuth as getReactNativeAuth } from '@react-native-firebase/auth';
+import { getFirestore as getReactNativeFirestore } from '@react-native-firebase/firestore';
 import { getApp, getApps } from "@react-native-firebase/app";
 import { getAuth } from "@react-native-firebase/auth";
 import { getFirestore } from "@react-native-firebase/firestore";
@@ -15,7 +20,34 @@ export const isFirebaseConfigured = Boolean(
   firebaseConfig.apiKey && firebaseConfig.projectId && firebaseConfig.appId,
 );
 
-export const app = getApps().length > 0 ? getApp() : undefined;
+function getWebApp() {
+  if (!isFirebaseConfigured) {
+    return null;
+  }
+  return getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+}
 
-export const auth = app ? getAuth(app) : getAuth();
-export const db = app ? getFirestore(app) : getFirestore();
+export const app = getWebApp();
+
+export const auth = app ? getAuth(app) : null;
+export const db = app ? getFirestore(app) : null;
+export const rnAuth = getReactNativeAuth();
+export const rnDb = getReactNativeFirestore();
+
+export function getWebAuth() {
+  if (!auth) {
+    throw new Error(
+      'Firebase Web belum dikonfigurasi. Isi variabel EXPO_PUBLIC_FIREBASE_*.',
+    );
+  }
+  return auth;
+}
+
+export function getWebFirestore() {
+  if (!db) {
+    throw new Error(
+      'Firebase Web belum dikonfigurasi. Isi variabel EXPO_PUBLIC_FIREBASE_*.',
+    );
+  }
+  return db;
+}

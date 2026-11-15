@@ -35,7 +35,9 @@ yarn-error.*
 .env*.local
 !.env.example
 
-google-services.json
+# Firebase native configuration
+/google-services.json
+/GoogleService-Info.plist
 
 # typescript
 *.tsbuildinfo
