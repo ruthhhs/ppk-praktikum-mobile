@@ -249,6 +249,7 @@ export default function PraktikanJadwalScreen() {
     isAuthenticated,
     isLoading,
     error,
+    daftarKelasPraktikan,
     praktikum,
     sesi,
     presensi,
@@ -297,9 +298,20 @@ export default function PraktikanJadwalScreen() {
   );
 
   const labelKelasAktif = useMemo(() => {
-    const unik = Array.from(new Set(sesi.map((item) => item.kelas))).sort();
-    return unik.length > 0 ? `Kelas ${unik.join(', ')}` : 'Kelas Praktikan';
-  }, [sesi]);
+    const unikSesi = Array.from(new Set(sesi.map((item) => item.kelas))).sort();
+    if (unikSesi.length > 0) {
+      return `Kelas ${unikSesi.join(', ')}`;
+    }
+    const namaKelasPendek = daftarKelasPraktikan.filter(
+      (k) => !k.startsWith('kelas-') && k.length <= 12,
+    );
+    if (namaKelasPendek.length > 0) {
+      return `Kelas ${Array.from(new Set(namaKelasPendek)).join(', ')}`;
+    }
+    return daftarKelasPraktikan.length > 0
+      ? 'Kelas Praktikan'
+      : 'Belum terdaftar di kelas';
+  }, [daftarKelasPraktikan, sesi]);
 
   const bukaDetailSesi = (sesiId: string) => {
     router.push({
