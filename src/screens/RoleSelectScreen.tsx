@@ -110,10 +110,9 @@ export default function RoleSelectScreen() {
                 <Card
                   key={user.id}
                   onPress={() => setSelectedUser(user)}
-                  style={[
-                    styles.userCard,
-                    isSelected && styles.selectedUserCard,
-                  ]}
+                  style={isSelected
+                    ? { ...styles.userCard, ...styles.selectedUserCard }
+                    : styles.userCard}
                 >
                   <View style={styles.userRow}>
                     <View style={styles.userInfo}>

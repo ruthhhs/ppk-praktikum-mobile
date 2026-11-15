@@ -2,7 +2,7 @@ import type { User as FirebaseUser } from '@react-native-firebase/auth';
 import { onAuthStateChanged } from '@react-native-firebase/auth';
 import React, { createContext, useEffect, useMemo, useState } from 'react';
 import type { Role, UserProfile } from '@/data/types';
-import { auth } from '@/services/firebase';
+import { rnAuth } from '@/services/firebase';
 import { firestoreRefs, listenDocument } from '@/services/firebase/firestore';
 
 type AuthState = {
@@ -23,7 +23,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
 
-  useEffect(() => onAuthStateChanged(auth, (nextUser) => {
+  useEffect(() => onAuthStateChanged(rnAuth, (nextUser) => {
     setUser(nextUser);
     if (!nextUser) {
       setProfile(null);

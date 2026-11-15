@@ -8,6 +8,7 @@ import {
   onSnapshot,
   setDoc,
   updateDoc,
+  serverTimestamp,
 } from '@react-native-firebase/firestore';
 export { serverTimestamp } from '@react-native-firebase/firestore';
 import type {
@@ -31,7 +32,7 @@ import type {
   SesiDoc,
 } from '@/data/firestoreType';
 import type { UserProfile } from '@/data/types';
-import { db } from './index';
+import { rnDb } from './index';
 
 export type WithId<T> = T & { id: string };
 export type FirestoreListenerError = (error: FirestoreError) => void;
@@ -39,17 +40,18 @@ export type FirestoreListenerError = (error: FirestoreError) => void;
 function documentReference<T extends DocumentData>(
   ...path: string[]
 ): DocumentReference<T, T> {
-  return doc(db, path[0], ...path.slice(1)) as DocumentReference<T, T>;
+  return doc(rnDb, path[0], ...path.slice(1)) as DocumentReference<T, T>;
 }
 
 function collectionReference<T extends DocumentData>(
   ...path: string[]
 ): CollectionReference<T, T> {
-  return collection(db, path[0], ...path.slice(1)) as CollectionReference<T, T>;
+  return collection(rnDb, path[0], ...path.slice(1)) as CollectionReference<T, T>;
 }
 
 export const firestoreRefs = {
   user: (uid: string) => documentReference<UserProfile>('users', uid),
+  users: () => collectionReference<UserProfile>('users'),
   praktikum: () => collectionReference<PraktikumDoc>('praktikum'),
   praktikumDoc: (praktikumId: string) =>
     documentReference<PraktikumDoc>('praktikum', praktikumId),
@@ -150,4 +152,31 @@ export function removeDocument<T extends DocumentData>(
   reference: DocumentReference<T, T>,
 ): Promise<void> {
   return deleteDoc(reference);
+}
+
+export async function ambilDaftarPraktikan(): Promise<WithId<UserProfile>[]> {
+  const allUsers = await readCollection(firestoreRefs.users());
+  return allUsers.filter((u) => u.role === "praktikan");
+}
+
+export function tambahPeserta(kelasId: string, uid: string): Promise<void> {
+  return setDocument(firestoreRefs.pesertaDoc(kelasId, uid), {
+    uid,
+    aktif: true,
+    joinedAt: serverTimestamp(),
+  });
+}
+
+export function pantauPesertaKelas(
+  kelasId: string,
+  onValue: (value: WithId<PesertaDoc>[]) => void,
+  onError: FirestoreListenerError,
+): Unsubscribe {
+  return listenCollection(firestoreRefs.peserta(kelasId), onValue, onError);
+}
+
+export function nonaktifkanPeserta(kelasId: string, uid: string): Promise<void> {
+  return updateDocument(firestoreRefs.pesertaDoc(kelasId, uid), {
+    aktif: false,
+  });
 }
