@@ -955,8 +955,9 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
       }
       updateState({
         isLoadingFirestore: false,
-        errorFirestore:
-          'Gagal memuat data jadwal dari Cloud Firestore. Periksa koneksi internet atau izin akses akun kamu.',
+        errorFirestore: code.includes('permission-denied')
+          ? 'Akses koleksi jadwal/sesi ditolak oleh Firestore Security Rules (pastikan allow list: if signedIn() sudah diterapkan pada koleksi kelas, jadwal, dan sesi).'
+          : 'Gagal memuat data jadwal dari Cloud Firestore. Periksa koneksi internet atau izin akses akun kamu.',
       });
     },
   );
@@ -1393,71 +1394,28 @@ export function usePraktikanStore() {
     }
 
     updateState({ isSubmittingPresensi: true });
+    const targetFirestoreSesiId = targetSesi.id;
+    const hasFirebaseSession =
+      isFirebaseConfigured &&
+      isSesiDiFirestore &&
+      Boolean(auth.currentUser || authUser);
 
     try {
       const waktuSekarang = new Date().toISOString();
 
-      // Jika Firebase aktif dan sesi ada di Firestore (atau user login via Firebase Auth),
-      // validasi status terbaru di server lalu simpan dokumen ke sesi/{sesiId}/presensi/{uid}
-      if (isFirebaseConfigured && (isSesiDiFirestore || auth.currentUser)) {
-        const targetFirestoreSesiId = isSesiDiFirestore
-          ? targetSesi.id
-          : ubahKeIdSesiApp(sesiId);
-
-        const latestSesiDoc = await readDocument(
-          firestoreRefs.sesiDoc(targetFirestoreSesiId),
-        );
-        if (latestSesiDoc) {
-          if (latestSesiDoc.status === 'belum_dibuka') {
-            updateState({ isSubmittingPresensi: false });
-            return {
-              ok: false,
-              reason: 'belum_dibuka',
-              pesan: 'Sesi praktikum belum dibuka oleh asisten.',
-            };
-          }
-          if (latestSesiDoc.status === 'ditutup') {
-            updateState({ isSubmittingPresensi: false });
-            return {
-              ok: false,
-              reason: 'sudah_ditutup',
-              pesan: 'Sesi praktikum telah ditutup.',
-            };
-          }
-        }
-
-        const existingIzinDoc = await readDocument(
-          firestoreRefs.pengajuanIzinDoc(targetFirestoreSesiId, userId),
-        );
-        if (existingIzinDoc && existingIzinDoc.status === 'diterima') {
-          updateState({ isSubmittingPresensi: false });
-          return {
-            ok: false,
-            reason: 'izin_diterima',
-            pesan:
-              'Pengajuan izin kamu pada sesi ini telah disetujui asisten, sehingga presensi tidak dapat dilakukan.',
-          };
-        }
-
-        const existingPresensiDoc = await readDocument(
-          firestoreRefs.presensiDoc(targetFirestoreSesiId, userId),
-        );
-        if (existingPresensiDoc) {
-          updateState({ isSubmittingPresensi: false });
-          return {
-            ok: false,
-            reason: 'sudah_presensi',
-            pesan: 'Kamu sudah melakukan presensi pada sesi ini.',
-          };
-        }
-
+      // Jika Firebase aktif dan sesi berasal dari Firestore, simpan ke sesi/{sesiId}/presensi/{uid}
+      // Aturan Bisnis & kode 4 digit divalidasi secara atomik oleh Firestore Security Rules
+      if (hasFirebaseSession) {
         await setDocument(
           firestoreRefs.presensiDoc(targetFirestoreSesiId, userId),
           {
             userId,
             kode: kodeBersih,
             recordedAt: serverTimestamp(),
-          } as unknown as { userId: string; recordedAt: ReturnType<typeof serverTimestamp> },
+          } as unknown as {
+            userId: string;
+            recordedAt: ReturnType<typeof serverTimestamp>;
+          },
         );
       }
 
@@ -1499,11 +1457,29 @@ export function usePraktikanStore() {
       const code = (err as { code?: string })?.code ?? '';
 
       if (code.includes('permission-denied')) {
+        if (hasFirebaseSession) {
+          const latestSesiDoc = await readDocument(
+            firestoreRefs.sesiDoc(targetFirestoreSesiId),
+          ).catch(() => null);
+          if (latestSesiDoc?.status === 'ditutup') {
+            return {
+              ok: false,
+              reason: 'sudah_ditutup',
+              pesan: 'Sesi praktikum telah ditutup.',
+            };
+          }
+          if (latestSesiDoc?.status === 'belum_dibuka') {
+            return {
+              ok: false,
+              reason: 'belum_dibuka',
+              pesan: 'Sesi praktikum belum dibuka oleh asisten.',
+            };
+          }
+        }
         return {
           ok: false,
           reason: 'kode_salah',
-          pesan:
-            'Kode presensi salah atau sesi sudah tidak menerima presensi.',
+          pesan: 'Kode presensi tidak sesuai.',
         };
       }
 
@@ -1603,58 +1579,18 @@ export function usePraktikanStore() {
     }
 
     updateState({ isSubmittingIzin: true });
+    const targetFirestoreSesiId = targetSesi.id;
+    const hasFirebaseSession =
+      isFirebaseConfigured &&
+      isSesiDiFirestore &&
+      Boolean(auth.currentUser || authUser);
 
     try {
-      const targetFirestoreSesiId = isSesiDiFirestore
-        ? targetSesi.id
-        : ubahKeIdSesiApp(sesiId);
-
-      if (isFirebaseConfigured && (isSesiDiFirestore || auth.currentUser)) {
-        const latestSesiDoc = await readDocument(
-          firestoreRefs.sesiDoc(targetFirestoreSesiId),
-        );
-        if (latestSesiDoc && latestSesiDoc.status === 'ditutup') {
-          updateState({ isSubmittingIzin: false });
-          return {
-            ok: false,
-            reason: 'sesi_ditutup',
-            pesan:
-              'Sesi praktikum telah ditutup sehingga pengajuan izin tidak dapat dikirim.',
-          };
-        }
-
-        const existingPresensiSnap = await readDocument(
-          firestoreRefs.presensiDoc(targetFirestoreSesiId, userId),
-        );
-        if (existingPresensiSnap) {
-          updateState({ isSubmittingIzin: false });
-          return {
-            ok: false,
-            reason: 'sudah_presensi',
-            pesan:
-              'Kamu sudah tercatat hadir pada sesi ini sehingga tidak dapat mengajukan izin.',
-          };
-        }
-
-        const existingIzinSnap = await readDocument(
-          firestoreRefs.pengajuanIzinDoc(targetFirestoreSesiId, userId),
-        );
-        if (existingIzinSnap) {
-          updateState({ isSubmittingIzin: false });
-          return {
-            ok: false,
-            reason: 'sudah_mengajukan',
-            pesan:
-              'Kamu sudah mengajukan izin pada sesi ini. Alasan izin yang sudah dikirim tidak dapat diubah.',
-          };
-        }
-      }
-
       // Panggil layanan AI untuk klasifikasi alasan (gagal tidak memblokir penyimpanan)
       const hasilAI = await klasifikasikanAlasanIzin(alasanBersih);
       const waktuSekarang = new Date().toISOString();
 
-      if (isFirebaseConfigured && (isSesiDiFirestore || auth.currentUser)) {
+      if (hasFirebaseSession) {
         await setDocument(
           firestoreRefs.pengajuanIzinDoc(targetFirestoreSesiId, userId),
           {
@@ -1697,11 +1633,24 @@ export function usePraktikanStore() {
       const code = (err as { code?: string })?.code ?? '';
 
       if (code.includes('permission-denied')) {
+        if (hasFirebaseSession) {
+          const latestSesiDoc = await readDocument(
+            firestoreRefs.sesiDoc(targetFirestoreSesiId),
+          ).catch(() => null);
+          if (latestSesiDoc?.status === 'ditutup') {
+            return {
+              ok: false,
+              reason: 'sesi_ditutup',
+              pesan:
+                'Sesi praktikum telah ditutup sehingga pengajuan izin tidak dapat dikirim.',
+            };
+          }
+        }
         return {
           ok: false,
           reason: 'sesi_ditutup',
           pesan:
-            'Pengajuan izin ditolak oleh aturan keamanan server (sesi mungkin sudah ditutup atau kamu sudah memiliki pengajuan pada sesi ini).',
+            'Pengajuan izin ditolak oleh aturan keamanan server (sesi mungkin sudah ditutup atau kamu sudah memiliki pengajuan/presensi pada sesi ini).',
         };
       }
 
