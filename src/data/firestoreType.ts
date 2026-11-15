@@ -16,6 +16,7 @@ export interface PraktikumDoc {
   nama: string;
   deskripsi: string;
   aktif: boolean;
+  praktikanUids: string[];
   createdAt: Ts;
   updatedAt: Ts;
 }
@@ -25,6 +26,7 @@ export interface KelasDoc {
   praktikumId: string;
   nama: string;
   asistenUids: string[];
+  praktikanUids: string[];
   aktif: boolean;
   createdAt: Ts;
   updatedAt: Ts;
@@ -33,6 +35,8 @@ export interface KelasDoc {
 // kelas/{kelasId}/peserta/{uid}
 export interface PesertaDoc {
   uid: string;
+  nama: string;
+  nim?: string;
   aktif: boolean;
   joinedAt: Ts;
 }

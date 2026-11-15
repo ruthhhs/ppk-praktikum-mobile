@@ -5,7 +5,7 @@ import {
   signOut,
 } from '@react-native-firebase/auth';
 import { doc, serverTimestamp, setDoc } from '@react-native-firebase/firestore';
-import { auth, db } from './index';
+import { rnAuth, rnDb } from './index';
 
 export function pesanErrorAuth(e: unknown): string {
   const code = (e as { code?: string })?.code ?? '';
@@ -33,7 +33,7 @@ export function pesanErrorAuth(e: unknown): string {
 
 export async function registerUser(p: { nama: string; email: string; password: string; nim: string }) {
   const email = p.email.trim();
-  const cred = await createUserWithEmailAndPassword(auth, email, p.password);
+  const cred = await createUserWithEmailAndPassword(rnAuth, email, p.password);
   const user = cred.user;
 
   const data: Record<string, unknown> = {
@@ -46,7 +46,7 @@ export async function registerUser(p: { nama: string; email: string; password: s
   };
 
   try {
-    await setDoc(doc(db, 'users', user.uid), data);
+    await setDoc(doc(rnDb, 'users', user.uid), data);
   } catch (e) {
     // Hindari akun Auth tanpa profil.
     await deleteUser(user).catch(() => {});
@@ -55,6 +55,6 @@ export async function registerUser(p: { nama: string; email: string; password: s
 }
 
 export const loginUser = (email: string, password: string) =>
-  signInWithEmailAndPassword(auth, email.trim(), password);
+  signInWithEmailAndPassword(rnAuth, email.trim(), password);
 
-export const logoutUser = () => signOut(auth);
+export const logoutUser = () => signOut(rnAuth);

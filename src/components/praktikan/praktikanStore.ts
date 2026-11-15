@@ -5,7 +5,7 @@ import { dummyPresensi, dummySesi, dummyUsers } from '../../data/dummy';
 import type { Praktikum, Role, SesiStatus, User } from '../../data/types';
 import { useApp } from '../../hooks/useApp';
 import { klasifikasikanAlasanIzin } from '../../services/ai';
-import { auth, isFirebaseConfigured } from '../../services/firebase';
+import { isFirebaseConfigured } from '../../services/firebase';
 import {
   firestoreRefs,
   listenCollection,
@@ -663,35 +663,35 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
     errorFirestore: null,
   });
 
-  // 1. Listener profil pengguna (cadangan bila dipakai di luar AuthProvider)
+  // 1. Listener profil pengguna aktif dari AuthProvider
   const userProfileUnsub = listenDocument(
     firestoreRefs.user(activeUserId),
     (userProfile) => {
-      if (userProfile) {
-        const role =
-          userProfile.role === 'asisten' || userProfile.role === 'praktikan'
-            ? userProfile.role
-            : 'praktikan';
-        updateState({
-          firebaseUser: {
-            id: activeUserId,
-            nama:
-              typeof userProfile.nama === 'string' && userProfile.nama.trim()
-                ? userProfile.nama.trim()
-                : 'Praktikan',
-            role,
-            nim:
-              typeof userProfile.nim === 'string' ? userProfile.nim : undefined,
-            email:
-              typeof userProfile.email === 'string'
-                ? userProfile.email
-                : undefined,
-          },
-          authChecked: true,
-        });
-      } else {
+      if (!userProfile) {
         updateState({ authChecked: true });
+        return;
       }
+
+      const role =
+        userProfile.role === 'asisten' || userProfile.role === 'praktikan'
+          ? userProfile.role
+          : 'praktikan';
+      updateState({
+        firebaseUser: {
+          id: activeUserId,
+          nama:
+            typeof userProfile.nama === 'string' && userProfile.nama.trim()
+              ? userProfile.nama.trim()
+              : 'Praktikan',
+          role,
+          nim: typeof userProfile.nim === 'string' ? userProfile.nim : undefined,
+          email:
+            typeof userProfile.email === 'string'
+              ? userProfile.email
+              : undefined,
+        },
+        authChecked: true,
+      });
     },
     () => {
       updateState({ authChecked: true });
@@ -782,11 +782,10 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
         if (pesertaUnsubs.has(kelasItem.id)) {
           continue;
         }
-        pendingPesertaIds.add(kelasItem.id);
         const unsubPeserta = listenDocument(
           firestoreRefs.pesertaDoc(kelasItem.id, activeUserId),
-          (pesertaData) => {
-            const aktif = Boolean(pesertaData && pesertaData.aktif !== false);
+          (data) => {
+            const aktif = data !== null && data.aktif !== false;
             if (aktif) {
               anggotaSet.add(kelasItem.id);
             } else {
@@ -873,7 +872,7 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
   );
   unsubscribers.push(jadwalUnsub);
 
-  // 5. Listener koleksi sesi
+  // 5. Listener koleksi sesi + dokumen presensi/{uid} & pengajuanIzin/{uid}
   const sesiUnsub = listenCollection(
     firestoreRefs.sesi(),
     (docs) => {
@@ -940,13 +939,110 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
           localState.praktikumFirestore.length > 0,
       });
 
-      sinkronkanListenerSubkoleksiSesi();
-      perbaruiStatusLoading();
+      // Bersihkan listener untuk sesi yang sudah dihapus
+      const currentSesiIds = new Set(items.map((item) => item.id));
+      for (const [sesiId, unsub] of presensiUnsubs.entries()) {
+        if (!currentSesiIds.has(sesiId)) {
+          unsub();
+          presensiUnsubs.delete(sesiId);
+        }
+      }
+      for (const [sesiId, unsub] of izinUnsubs.entries()) {
+        if (!currentSesiIds.has(sesiId)) {
+          unsub();
+          izinUnsubs.delete(sesiId);
+        }
+      }
+
+      if (!activeUserId) {
+        return;
+      }
+
+      for (const sesiItem of items) {
+        if (!presensiUnsubs.has(sesiItem.id)) {
+          const unsubPresensi = listenDocument(
+            firestoreRefs.presensiDoc(sesiItem.id, activeUserId),
+            (pData) => {
+              const nextMap = { ...localState.presensiFirestoreMap };
+              if (pData) {
+                nextMap[sesiItem.id] = {
+                  id: activeUserId,
+                  sesiId: sesiItem.id,
+                  userId:
+                    typeof pData.userId === 'string'
+                      ? pData.userId
+                      : activeUserId,
+                  waktu: konversiTimestampKeIso(pData.recordedAt),
+                };
+              } else {
+                delete nextMap[sesiItem.id];
+              }
+              updateState({ presensiFirestoreMap: nextMap });
+            },
+            () => {
+              // Abaikan bila belum ada izin baca pada sesi kelas lain
+            },
+          );
+          presensiUnsubs.set(sesiItem.id, unsubPresensi);
+        }
+
+        if (!izinUnsubs.has(sesiItem.id)) {
+          const unsubIzin = listenDocument(
+            firestoreRefs.pengajuanIzinDoc(sesiItem.id, activeUserId),
+            (iData) => {
+              const nextIzinMap = { ...localState.izinFirestoreMap };
+              if (iData) {
+                const rawStatus = iData.status;
+                const statusIzin: StatusIzinPraktikan =
+                  rawStatus === 'diterima' ||
+                  rawStatus === 'ditolak' ||
+                  rawStatus === 'menunggu'
+                    ? rawStatus
+                    : 'menunggu';
+                const statusKlasifikasi =
+                  iData.statusKlasifikasi === 'berhasil' ? 'berhasil' : 'gagal';
+
+                nextIzinMap[sesiItem.id] = {
+                  id: activeUserId,
+                  sesiId: sesiItem.id,
+                  userId:
+                    typeof iData.userId === 'string'
+                      ? iData.userId
+                      : activeUserId,
+                  alasan: typeof iData.alasan === 'string' ? iData.alasan : '',
+                  kategoriAI:
+                    typeof iData.kategoriAI === 'string'
+                      ? iData.kategoriAI
+                      : undefined,
+                  statusKlasifikasi,
+                  status: statusIzin,
+                  createdAt: konversiTimestampKeIso(iData.createdAt),
+                  reviewedBy:
+                    typeof iData.reviewedBy === 'string'
+                      ? iData.reviewedBy
+                      : undefined,
+                  reviewedAt: iData.reviewedAt
+                    ? konversiTimestampKeIso(iData.reviewedAt)
+                    : undefined,
+                };
+              } else {
+                delete nextIzinMap[sesiItem.id];
+              }
+              updateState({ izinFirestoreMap: nextIzinMap });
+            },
+            () => {
+              // Abaikan bila belum ada dokumen izin
+            },
+          );
+          izinUnsubs.set(sesiItem.id, unsubIzin);
+        }
+      }
     },
     (err) => {
       const code = (err as { code?: string })?.code ?? '';
-      sesiLoaded = true;
-      if (code.includes('permission-denied') && !auth.currentUser) {
+      // Jika permission-denied terjadi karena belum login ke Firebase Auth namun sedang mode simulasi lokal,
+      // jangan kunci layar dengan error kecuali memang sudah login Firebase Auth.
+      if (code === 'permission-denied' && !activeUserId) {
         updateState({
           isLoadingFirestore: false,
           errorFirestore: null,
@@ -1040,7 +1136,6 @@ export function usePraktikanStore() {
     if (isFirebaseConfigured) {
       return Boolean(
         resolvedAuthUser ||
-          auth.currentUser ||
           (appUser && appUser.role === 'praktikan'),
       );
     }

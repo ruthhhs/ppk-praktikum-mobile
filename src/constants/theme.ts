@@ -23,6 +23,14 @@ export const colors = {
   background: "#FFFFFF",
 };
 
+export const colors = {
+  ...baseColors,
+  background: baseColors.bg,
+  backgroundElement: baseColors.surface,
+  backgroundSelected: baseColors.highlight,
+  textSecondary: baseColors.textMuted,
+};
+
 export type ThemeColor = keyof typeof colors;
 export const Colors = {
   light: colors,

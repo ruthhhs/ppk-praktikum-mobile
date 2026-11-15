@@ -1,8 +1,8 @@
 # SIP! : Sistem Informasi Praktikum
 
-Aplikasi mobile (React Native + Expo) untuk presensi praktikum. Sprint 1 memakai data dummy lokal, tanpa database.
+Aplikasi mobile React Native + Expo untuk kegiatan praktikum. Repository ini memuat prototype Sprint 1 dan fondasi integrasi Sprint 2 dengan Firebase Authentication dan Cloud Firestore.
 
-README ini memandu kamu sebagai programmer dari **clone repo sampai punya APK sendiri di HP** lewat **EAS Build** (tanpa Expo Go).
+README ini memandu setup lokal, konfigurasi Firebase, verifikasi dasar, dan build Android melalui EAS (tanpa Expo Go).
 
 ---
 
@@ -10,13 +10,13 @@ README ini memandu kamu sebagai programmer dari **clone repo sampai punya APK se
 
 | Kebutuhan | Keterangan |
 |---|---|
-| Node.js (LTS) | Cek versi: `node -v`. Gunakan versi yang sama dengan tim: **(isi versi, misal 20.x)** |
+| Node.js LTS dan npm | Cek versi: `node -v` dan `npm -v`. Gunakan versi yang disepakati tim |
 | Git | `git --version` |
 | Akun Expo pribadi | Daftar di https://expo.dev jika belum punya |
 | HP Android | Aktifkan izin **install dari sumber tidak dikenal** untuk browser/file manager yang dipakai |
 | Editor | VS Code (disarankan) |
 
-> iOS tidak termasuk Sprint 1. Semua build hanya untuk **Android (APK)**.
+> Profil build EAS yang disiapkan saat ini menargetkan **Android (APK)**. Konfigurasi Firebase native iOS belum disiapkan.
 
 ---
 
@@ -48,6 +48,62 @@ npx expo install <nama-paket>
 
 Jangan `npm install <paket>` biasa, karena versinya bisa tidak cocok dengan SDK Expo. Jangan menambah library yang butuh kode native tanpa konfirmasi PM.
 
+### Setup Firebase (Sprint 2)
+
+PM memberikan akses ke Firebase project tim melalui akun masing-masing. Jangan meminta atau membagikan password akun Firebase anggota lain.
+
+Sebelum menjalankan alur Firebase, PM harus memastikan:
+
+- Firebase Authentication mengaktifkan provider **Email/Password**.
+- Cloud Firestore dibuat di lokasi `asia-southeast2` dengan mode **Production**. Jangan gunakan Test mode.
+- Firebase Android app terdaftar dengan package ID `com.ppk6d1.sip`, sama dengan `android.package` di `app.json`.
+
+#### Konfigurasi lokal
+
+1. Salin template environment:
+
+   ```cmd
+   copy .env.example .env
+   ```
+
+2. Dari Firebase Console → **Project settings** → **Your apps**, salin konfigurasi aplikasi Web ke variabel `EXPO_PUBLIC_FIREBASE_*` di `.env`. Nilai ini adalah konfigurasi client dan akan tertanam di bundle aplikasi; keamanan data tetap harus dijaga oleh Firestore Security Rules.
+3. Unduh `google-services.json` untuk Android app `com.ppk6d1.sip` dari Firebase Console dan simpan di root repository. File ini diabaikan Git dan tidak boleh dimasukkan ke commit atau dikirim ke kanal publik.
+4. Isi `EXPO_PUBLIC_AI_API_URL` hanya dengan endpoint resmi yang diberikan PM/pemilik API. Jangan menebak endpoint.
+
+Semua variabel `EXPO_PUBLIC_*` dapat dibaca pengguna dari bundle aplikasi. **Jangan simpan API token, service-account key, password, atau rahasia lain di dalamnya.** Klien AI saat ini memiliki dukungan kode untuk `EXPO_PUBLIC_AI_API_TOKEN`, tetapi token rahasia tidak aman di aplikasi client. Jangan mengisi variabel itu dengan token asli; minta PM/Dev C menyediakan integrasi server yang aman jika token diperlukan.
+
+Setelah mengubah `.env`, hentikan lalu jalankan ulang server Expo. Firebase Authentication/Firestore native tidak berjalan di Expo Go; gunakan development build:
+
+```cmd
+npx expo start --dev-client
+```
+
+#### Konfigurasi EAS untuk build cloud
+
+File lokal `google-services.json` tidak dikirim lewat Git. PM/Dev A yang memiliki akses EAS perlu mengunggahnya satu kali ke **Project settings → Environment variables**:
+
+- Nama: `GOOGLE_SERVICES_JSON`
+- Tipe: **File**
+- Visibility: **Secret**
+- Environment: pilih setiap environment yang dipakai (`development`, `preview`, dan/atau `production`)
+
+`app.config.js` memakai file tersebut saat build EAS, dan memakai `./google-services.json` untuk setup lokal. Variabel `EXPO_PUBLIC_FIREBASE_*` yang diperlukan untuk bundle juga harus tersedia di environment EAS terkait; nilainya konfigurasi client, bukan rahasia. Jangan masukkan token AI ke environment `EXPO_PUBLIC_*`.
+
+#### Verifikasi dasar
+
+Jalankan pemeriksaan dari root repository:
+
+```cmd
+npx tsc --noEmit
+npx expo lint
+npx expo-doctor
+npx expo export --platform android
+```
+
+Untuk smoke test Auth, buat akun uji melalui aplikasi lalu periksa bahwa UID muncul di Authentication dan profil `users/{uid}` tersimpan dengan role awal `praktikan`. Akun Asisten disiapkan PM dengan mengubah role profil melalui Firebase Console; aplikasi tidak menyediakan aksi untuk menaikkan role. Uji Rules dengan akun uji yang berwenang dan yang tidak berwenang—jangan memakai Test mode atau akun produksi.
+
+**Status integrasi yang perlu diketahui:** Rules lokal saat ini masih menolak pembuatan dokumen presensi sampai desain validasi kode 4 digit disepakati PM. Alur presensi belum dapat dinyatakan lulus hanya dari smoke test setup ini. Indeks komposit juga perlu ditambahkan setelah query final dari Dev B/C tersedia.
+
 ---
 
 ## 3. EAS CLI (hanya untuk yang membuat build)
@@ -55,8 +111,7 @@ Jangan `npm install <paket>` biasa, karena versinya bisa tidak cocok dengan SDK 
 > **Bagian ini hanya untuk PM/Dev A.** Programmer lain cukup memasang APK dari halaman Builds (bagian 4) dan boleh melewati bagian ini. Kalau suatu saat kamu perlu build sendiri, ikuti langkah di bawah.
 
 ```bash
-npm install -g eas-cli
-eas login
+npx eas-cli@latest login
 ```
 
 Login dengan **akun Expo pribadimu**. Organisasi tidak punya password sendiri; aksesmu didapat dari keanggotaan tadi.
@@ -64,7 +119,7 @@ Login dengan **akun Expo pribadimu**. Organisasi tidak punya password sendiri; a
 Cek:
 
 ```bash
-eas whoami
+npx eas-cli@latest whoami
 ```
 
 Hasilnya harus menampilkan username-mu dan organisasi `ppk6-d1`.
@@ -72,7 +127,7 @@ Hasilnya harus menampilkan username-mu dan organisasi `ppk6-d1`.
 Lalu cek proyek:
 
 ```bash
-eas project:info
+npx eas-cli@latest project:info
 ```
 
 Pastikan **owner = `ppk6-d1`**. Kalau owner masih akun pribadi PM atau muncul error "not authorized", berhenti dan hubungi PM.
@@ -91,7 +146,7 @@ Kamu **tidak perlu build sendiri**. APK dibuat satu kali oleh PM/Dev A di organi
 4. Tekan **Install** (atau scan QR di halaman itu) untuk mengunduh file `.apk`.
 5. Buka file `.apk`, izinkan instalasi dari sumber tidak dikenal bila diminta, lalu **Install**.
 
-Buka aplikasinya. Layar yang muncul adalah pemilih server, karena aplikasi menunggu terhubung ke laptopmu. Lanjut ke bagian 5.
+Buka aplikasi development build. Jika server belum berjalan, development client akan menunggu koneksi; jalankan `npx expo start --dev-client` di laptop dan pilih/scan server yang tersedia.
 
 **Dua jenis APK, jangan tertukar:**
 
@@ -134,7 +189,7 @@ npx expo start --dev-client --tunnel
 2. Tampilan tidak berubah? Tekan **`r`** di terminal untuk reload.
 3. Masih aneh? Hentikan server (Ctrl+C), lalu `npx expo start --dev-client -c` (membersihkan cache).
 
-Data masih dummy di state, jadi data kembali ke awal setiap kali aplikasi di-reload. Itu normal di Sprint 1.
+Sebagian alur yang belum terhubung ke Firestore mungkin masih memakai data dummy lokal. Untuk fitur yang sudah terintegrasi, pastikan Firebase config dan Security Rules project uji benar sebelum menganggap data persisten.
 
 ### Simpan pekerjaan
 
@@ -166,19 +221,20 @@ Cek tabel ini setiap kali ragu, terutama setelah `git pull`.
 | Gambar/aset yang di-import dari proyek | Simpan, tekan `r` | **Tidak** |
 | `git pull` membawa perubahan kode | Restart server | **Tidak** |
 | `package.json` / `package-lock.json` berubah | `npm install`, restart dengan `-c` | **Biasanya tidak** |
+| `.env` atau environment EAS berubah | Restart server; build cloud berikutnya memakai nilai EAS yang dipilih | **Tidak**, kecuali konfigurasi native ikut berubah |
 | Error *"Cannot find native module ..."* setelah menambah paket | Paket butuh kode native | **Ya**, build `development` ulang |
-| `app.json` berubah di `plugins`, ikon, splash, izin, `android.package` | Tarik perubahan | **Ya**, build `development` ulang |
+| `app.json` atau `app.config.js` mengubah plugin, file Firebase native, ikon, splash, izin, atau `android.package` | Tarik perubahan | **Ya**, build `development` ulang |
 | Mau uji versi standalone untuk demo | Minta PM | **Ya**, build `preview` |
 
 **Aturan praktis:** kalau hanya kode tampilan dan logika yang berubah, **jangan build**. Kalau muncul error aneh setelah pull, urutannya: `npm install` → `npx expo start --dev-client -c` → baru curiga perlu build ulang, dan tanya grup dulu.
 
 ### Siapa yang build?
 
-Hanya **PM atau Dev A**. Kuota build gratis terbatas dan dipakai bersama satu organisasi, jadi programmer lain tidak perlu menjalankan `eas build`. Perintahnya (untuk yang membuat build, setelah `eas login` di bagian 3):
+Hanya **PM atau Dev A**. Kuota build gratis terbatas dan dipakai bersama satu organisasi, jadi programmer lain tidak perlu menjalankan EAS Build. Perintahnya (untuk yang membuat build, setelah `npx eas-cli@latest login` di bagian 3):
 
 ```bash
-eas build --platform android --profile development   # APK untuk coding
-eas build --platform android --profile preview       # APK demo
+npx eas-cli@latest build --platform android --profile development   # APK untuk coding
+npx eas-cli@latest build --platform android --profile preview       # APK demo
 ```
 
 Setelah build ulang `development`, PM mengumumkan di grup, lalu **semua orang mengunduh APK terbaru** dari halaman Builds (bagian 4).
@@ -241,7 +297,7 @@ Nilai berikut **dibekukan** karena mengubahnya memutus build, kredensial, atau i
 
 | Masalah | Penyebab / solusi |
 |---|---|
-| `eas: command not found` | Instalasi global belum jalan. Buka terminal baru atau jalankan ulang `npm install -g eas-cli` |
+| EAS CLI tidak ditemukan | Gunakan `npx eas-cli@latest <perintah>` dari root repository |
 | Login gagal | Pakai email/username akun Expo, bukan GitHub. Kalau daftar dengan GitHub, atur password dulu di expo.dev |
 | `not authorized` / proyek tidak ditemukan | Undangan organisasi belum diterima, atau `owner` di `app.json` salah. Hubungi PM |
 | EAS minta membuat keystore baru | **Berhenti.** Jangan setuju, hubungi PM |
@@ -267,11 +323,10 @@ npx expo-doctor                      # cek masalah dependensi
 **Hanya PM/Dev A (membuat build):**
 
 ```bash
-npm install -g eas-cli
-eas login && eas whoami
-eas project:info
-eas build --platform android --profile development   # APK coding
-eas build --platform android --profile preview       # APK demo
+npx eas-cli@latest login && npx eas-cli@latest whoami
+npx eas-cli@latest project:info
+npx eas-cli@latest build --platform android --profile development   # APK coding
+npx eas-cli@latest build --platform android --profile preview       # APK demo
 ```
 
 Pertanyaan atau kendala: tanyakan di grup tim atau langsung ke PM.
