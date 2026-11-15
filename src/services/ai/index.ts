@@ -9,7 +9,21 @@ export type HasilKlasifikasiAI = {
 const AI_TIMEOUT_MS = 10000;
 
 function ekstrakKategoriDariRespons(data: unknown): string | undefined {
-  if (!data || typeof data !== 'object') {
+  if (!data) {
+    return undefined;
+  }
+
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      const hasilItem = ekstrakKategoriDariRespons(item);
+      if (hasilItem) {
+        return hasilItem;
+      }
+    }
+    return undefined;
+  }
+
+  if (typeof data !== 'object') {
     return undefined;
   }
 
@@ -23,6 +37,8 @@ function ekstrakKategoriDariRespons(data: unknown): string | undefined {
     record.prediksi,
     record.result,
     record.hasil,
+    record.class_name,
+    record.kelas,
   ];
 
   for (const nilai of kandidatLangsung) {
@@ -31,8 +47,21 @@ function ekstrakKategoriDariRespons(data: unknown): string | undefined {
     }
   }
 
-  if (record.data && typeof record.data === 'object') {
-    return ekstrakKategoriDariRespons(record.data);
+  const kandidatNested = [
+    record.data,
+    record.output,
+    record.response,
+    record.predictions,
+    record.choices,
+  ];
+
+  for (const nested of kandidatNested) {
+    if (nested && typeof nested === 'object') {
+      const hasilNested = ekstrakKategoriDariRespons(nested);
+      if (hasilNested) {
+        return hasilNested;
+      }
+    }
   }
 
   return undefined;
@@ -72,9 +101,11 @@ export async function klasifikasikanAlasanIzin(
     };
 
     if (apiToken) {
-      headers.Authorization = apiToken.startsWith('Bearer ')
-        ? apiToken
-        : `Bearer ${apiToken}`;
+      const cleanToken = apiToken.startsWith('Bearer ')
+        ? apiToken.slice(7).trim()
+        : apiToken;
+      headers.Authorization = `Bearer ${cleanToken}`;
+      headers['x-api-key'] = cleanToken;
     }
 
     const response = await fetch(endpoint, {
