@@ -3,9 +3,6 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getAuth as getReactNativeAuth } from '@react-native-firebase/auth';
 import { getFirestore as getReactNativeFirestore } from '@react-native-firebase/firestore';
-import { getApp, getApps } from "@react-native-firebase/app";
-import { getAuth } from "@react-native-firebase/auth";
-import { getFirestore } from "@react-native-firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY ?? "",
