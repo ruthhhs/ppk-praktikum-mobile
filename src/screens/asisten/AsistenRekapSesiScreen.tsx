@@ -1,27 +1,26 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { dummyUsers } from "../../data/dummy";
 import type { SesiStatus } from "../../data/types";
-import { useApp } from "../../hooks/useApp";
-import { useAsistenWorkflowStore } from "./AsistenWorkflowStore";
+import { useRekapPresensi } from "../../hooks/useRekapPresensi";
 
 type StatusSesi = SesiStatus;
 
-type PraktikanHadir = {
-  id: string;
-  nama: string;
-  nim: string;
-  waktu: string;
-};
+// type PraktikanHadir = {
+//   id: string;
+//   nama: string;
+//   nim: string;
+//   waktu: string;
+// };
 
 const WARNA = {
   bg: "#FFFFFF",
@@ -83,10 +82,12 @@ function Tombol({
   label,
   variant = "primary",
   onPress,
+  disabled = false,
 }: {
   label: string;
   variant?: "primary" | "outline" | "danger";
   onPress: () => void;
+  disabled?: boolean;
 }) {
   const buttonStyle =
     variant === "outline"
@@ -103,11 +104,13 @@ function Tombol({
   return (
     <Pressable
       accessibilityRole="button"
+      disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
         buttonStyle,
         pressed && styles.pressed,
+        disabled && { opacity: 0.5 },
       ]}
     >
       <Text style={[styles.buttonText, textStyle]}>{label}</Text>
@@ -115,82 +118,339 @@ function Tombol({
   );
 }
 
+// export default function AsistenRekapSesiScreen() {
+//   const { sesiId } = useLocalSearchParams<{ sesiId?: string }>();
+//   const activeSessionId = Array.isArray(sesiId) ? sesiId[0] : sesiId;
+//   const { sesi, tutup } = useAsistenWorkflowStore();
+//   const { presensi } = useApp();
+//   const currentSession =
+//     sesi.find((item) => item.id === activeSessionId) ?? sesi[0];
+//   const session = currentSession ?? {
+//     id: "",
+//     praktikum: "Praktikum",
+//     pertemuanKe: 0,
+//     kelas: "-",
+//     lab: "-",
+//     tanggal: "2026-01-01",
+//     jamMulai: "--:--",
+//     jamSelesai: "--:--",
+//     status: "belum_dibuka" as StatusSesi,
+//     hadir: 0,
+//     total: 0,
+//   };
+//   const [modalTutupTerbuka, setModalTutupTerbuka] = useState(false);
+//   const [feedback, setFeedback] = useState("");
+
+//   const daftarTerurut = useMemo(
+//     () =>
+//       presensi
+//         .filter((entry) => entry.sesiId === session.id)
+//         .map((entry): PraktikanHadir => {
+//           const user = dummyUsers.find((item) => item.id === entry.praktikanId);
+//           return {
+//             id: entry.id,
+//             nama: user?.nama ?? "Praktikan",
+//             nim: user?.nim ?? "NIM tidak tersedia",
+//             waktu: new Date(entry.waktuHadir).toLocaleTimeString("id-ID", {
+//               hour: "2-digit",
+//               minute: "2-digit",
+//               second: "2-digit",
+//               hour12: false,
+//               timeZone: "Asia/Jakarta",
+//             }),
+//           };
+//         })
+//         .sort((a, b) => a.waktu.localeCompare(b.waktu)),
+//     [presensi, session.id],
+//   );
+
+//   const jumlahHadir = daftarTerurut.length;
+//   const persentase =
+//     session.total > 0 ? Math.round((jumlahHadir / session.total) * 100) : 0;
+
+//   function tutupSesi() {
+//     const result = tutup(session.id);
+//     setFeedback(result.message);
+//     setModalTutupTerbuka(false);
+//   }
+
+//   return (
+//     <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
+//       <View style={styles.page}>
+//         <Pressable
+//           accessibilityRole="button"
+//           accessibilityLabel="Kembali"
+//           onPress={() => router.back()}
+//           style={({ pressed }) => [
+//             styles.backButton,
+//             pressed && styles.pressed,
+//           ]}
+//         >
+//           <Text style={styles.backArrow}>‹</Text>
+//           <Text style={styles.backLabel}>Kembali</Text>
+//         </Pressable>
+
+//         <View style={styles.heading}>
+//           <Text style={styles.eyebrow}>PRESENSI PRAKTIKUM</Text>
+//           <Text style={styles.title}>Rekap Kehadiran</Text>
+//         </View>
+
+//         <View style={styles.sessionHeader}>
+//           <View style={styles.sessionHeaderText}>
+//             <Text style={styles.courseName}>{session.praktikum}</Text>
+//             <Text style={styles.sessionMeta}>
+//               Pertemuan {session.pertemuanKe} · Kelas {session.kelas} ·{" "}
+//               {formatTanggal(session.tanggal)}
+//             </Text>
+//           </View>
+//           <StatusBadge status={session.status} />
+//         </View>
+
+//         <View style={styles.summaryCard}>
+//           <View style={styles.summaryTop}>
+//             <View>
+//               <Text style={styles.summaryEyebrow}>TOTAL KEHADIRAN</Text>
+//               <Text style={styles.summaryCount}>
+//                 {jumlahHadir}
+//                 <Text style={styles.summaryTotal}> / {session.total}</Text>
+//               </Text>
+//               <Text style={styles.summaryCaption}>praktikan hadir</Text>
+//             </View>
+
+//             <View style={styles.percentCircle}>
+//               <Text style={styles.percentValue}>{persentase}%</Text>
+//             </View>
+//           </View>
+
+//           <View style={styles.progressTrack}>
+//             <View
+//               style={[
+//                 styles.progressFill,
+//                 { width: `${persentase}%` as `${number}%` },
+//               ]}
+//             />
+//           </View>
+//         </View>
+
+//         <View style={styles.listHeading}>
+//           <View>
+//             <Text style={styles.listTitle}>Daftar praktikan</Text>
+//             <Text style={styles.listSubtitle}>
+//               Diurutkan berdasarkan waktu presensi
+//             </Text>
+//           </View>
+//           <Text style={styles.listCount}>{jumlahHadir} hadir</Text>
+//         </View>
+
+//         <ScrollView
+//           style={styles.list}
+//           contentContainerStyle={styles.listContent}
+//           showsVerticalScrollIndicator={false}
+//         >
+//           {daftarTerurut.length === 0 ? (
+//             <View style={styles.emptyState}>
+//               <View style={styles.emptyIcon}>
+//                 <Text style={styles.emptyIconText}>—</Text>
+//               </View>
+//               <Text style={styles.emptyTitle}>Belum ada yang presensi</Text>
+//               <Text style={styles.emptyDescription}>
+//                 Praktikan yang hadir akan muncul di daftar ini.
+//               </Text>
+//             </View>
+//           ) : (
+//             daftarTerurut.map((praktikan, index) => (
+//               <View key={praktikan.id} style={styles.attendeeRow}>
+//                 <Text style={styles.attendeeNumber}>
+//                   {String(index + 1).padStart(2, "0")}
+//                 </Text>
+
+//                 <View style={styles.avatar}>
+//                   <Text style={styles.avatarText}>
+//                     {praktikan.nama
+//                       .split(" ")
+//                       .slice(0, 2)
+//                       .map((bagian) => bagian[0])
+//                       .join("")
+//                       .toUpperCase()}
+//                   </Text>
+//                 </View>
+
+//                 <View style={styles.attendeeInfo}>
+//                   <Text style={styles.attendeeName}>{praktikan.nama}</Text>
+//                   <Text style={styles.attendeeNim}>{praktikan.nim}</Text>
+//                 </View>
+
+//                 <View style={styles.timePill}>
+//                   <Text style={styles.timeText}>{praktikan.waktu}</Text>
+//                 </View>
+//               </View>
+//             ))
+//           )}
+//         </ScrollView>
+
+//         {feedback ? (
+//           <Text accessibilityRole="alert" style={styles.feedback}>
+//             {feedback}
+//           </Text>
+//         ) : null}
+//         {session.status === "dibuka" ? (
+//           <View style={styles.bottomAction}>
+//             <Tombol
+//               label="Tutup Sesi"
+//               variant="danger"
+//               onPress={() => setModalTutupTerbuka(true)}
+//             />
+//           </View>
+//         ) : (
+//           <View style={styles.closedBanner}>
+//             <View style={styles.closedCheck}>
+//               <Text style={styles.closedCheckText}>
+//                 {session.status === "ditutup" ? "✓" : "·"}
+//               </Text>
+//             </View>
+//             <Text style={styles.closedText}>
+//               {session.status === "ditutup"
+//                 ? "Sesi telah ditutup"
+//                 : "Sesi belum dibuka"}
+//             </Text>
+//           </View>
+//         )}
+//       </View>
+
+//       <Modal
+//         visible={modalTutupTerbuka}
+//         transparent
+//         animationType="fade"
+//         onRequestClose={() => setModalTutupTerbuka(false)}
+//       >
+//         <View style={styles.modalBackdrop}>
+//           <Pressable
+//             accessibilityRole="button"
+//             accessibilityLabel="Batalkan konfirmasi"
+//             onPress={() => setModalTutupTerbuka(false)}
+//             style={StyleSheet.absoluteFill}
+//           />
+
+//           <View style={styles.modalCard}>
+//             <View style={styles.modalIcon}>
+//               <Text style={styles.modalIconText}>!</Text>
+//             </View>
+//             <Text style={styles.modalTitle}>Tutup sesi?</Text>
+//             <Text style={styles.modalDescription}>
+//               Presensi tidak bisa dilakukan lagi setelah sesi ditutup.
+//             </Text>
+
+//             <View style={styles.modalActions}>
+//               <Tombol
+//                 label="Batal"
+//                 variant="outline"
+//                 onPress={() => setModalTutupTerbuka(false)}
+//               />
+//               <Tombol label="Tutup Sesi" variant="danger" onPress={tutupSesi} />
+//             </View>
+//           </View>
+//         </View>
+//       </Modal>
+//     </SafeAreaView>
+//   );
+// }
+
 export default function AsistenRekapSesiScreen() {
   const { sesiId } = useLocalSearchParams<{ sesiId?: string }>();
   const activeSessionId = Array.isArray(sesiId) ? sesiId[0] : sesiId;
-  const { sesi, tutup } = useAsistenWorkflowStore();
-  const { presensi } = useApp();
-  const currentSession =
-    sesi.find((item) => item.id === activeSessionId) ?? sesi[0];
-  const session = currentSession ?? {
-    id: "",
-    praktikum: "Praktikum",
-    pertemuanKe: 0,
-    kelas: "-",
-    lab: "-",
-    tanggal: "2026-01-01",
-    jamMulai: "--:--",
-    jamSelesai: "--:--",
-    status: "belum_dibuka" as StatusSesi,
-    hadir: 0,
-    total: 0,
-  };
+  const { session, daftar, status, offline, retry, tutup } =
+    useRekapPresensi(activeSessionId);
+
   const [modalTutupTerbuka, setModalTutupTerbuka] = useState(false);
+  const [menutup, setMenutup] = useState(false);
   const [feedback, setFeedback] = useState("");
 
-  const daftarTerurut = useMemo(
-    () =>
-      presensi
-        .filter((entry) => entry.sesiId === session.id)
-        .map((entry): PraktikanHadir => {
-          const user = dummyUsers.find((item) => item.id === entry.praktikanId);
-          return {
-            id: entry.id,
-            nama: user?.nama ?? "Praktikan",
-            nim: user?.nim ?? "NIM tidak tersedia",
-            waktu: new Date(entry.waktuHadir).toLocaleTimeString("id-ID", {
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-              hour12: false,
-              timeZone: "Asia/Jakarta",
-            }),
-          };
-        })
-        .sort((a, b) => a.waktu.localeCompare(b.waktu)),
-    [presensi, session.id],
+  async function tutupSesi() {
+    if (!session) return;
+    try {
+      setMenutup(true);
+      const result = await tutup(session.id);
+      setFeedback(result.message);
+    } catch {
+      setFeedback("Sesi gagal ditutup. Periksa koneksi, lalu coba lagi.");
+    } finally {
+      setMenutup(false);
+      setModalTutupTerbuka(false);
+    }
+  }
+
+  const tombolKembali = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Kembali"
+      onPress={() => router.back()}
+      style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+    >
+      <Text style={styles.backArrow}>‹</Text>
+      <Text style={styles.backLabel}>Kembali</Text>
+    </Pressable>
   );
 
-  const jumlahHadir = daftarTerurut.length;
+  // Loading, error, atau sesi tidak ditemukan
+  if (status !== "ready" || !session) {
+    return (
+      <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
+        <View style={styles.page}>
+          {tombolKembali}
+          <View style={styles.heading}>
+            <Text style={styles.eyebrow}>PRESENSI PRAKTIKUM</Text>
+            <Text style={styles.title}>Rekap Kehadiran</Text>
+          </View>
+
+          <View style={styles.emptyState}>
+            {status === "loading" ? (
+              <>
+                <ActivityIndicator size="large" color={WARNA.primary} />
+                <Text style={styles.emptyDescription}>Memuat rekap…</Text>
+              </>
+            ) : status === "error" ? (
+              <>
+                <Text style={styles.emptyTitle}>Rekap tidak bisa dimuat</Text>
+                <Text style={styles.emptyDescription}>
+                  Periksa koneksi internetmu, lalu coba lagi.
+                </Text>
+                <Tombol label="Coba lagi" onPress={retry} />
+              </>
+            ) : (
+              <>
+                <Text style={styles.emptyTitle}>Sesi tidak ditemukan</Text>
+                <Text style={styles.emptyDescription}>
+                  Sesi ini mungkin sudah dihapus. Kembali ke daftar sesi.
+                </Text>
+              </>
+            )}
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const jumlahHadir = daftar.length;
   const persentase =
     session.total > 0 ? Math.round((jumlahHadir / session.total) * 100) : 0;
-
-  function tutupSesi() {
-    const result = tutup(session.id);
-    setFeedback(result.message);
-    setModalTutupTerbuka(false);
-  }
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
       <View style={styles.page}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Kembali"
-          onPress={() => router.back()}
-          style={({ pressed }) => [
-            styles.backButton,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Text style={styles.backArrow}>‹</Text>
-          <Text style={styles.backLabel}>Kembali</Text>
-        </Pressable>
+        {tombolKembali}
 
         <View style={styles.heading}>
           <Text style={styles.eyebrow}>PRESENSI PRAKTIKUM</Text>
           <Text style={styles.title}>Rekap Kehadiran</Text>
         </View>
+
+        {offline && (
+          <View style={styles.offlineBanner}>
+            <Text style={styles.offlineText}>
+              Kamu sedang offline. Daftar kehadiran mungkin belum yang terbaru.
+            </Text>
+          </View>
+        )}
 
         <View style={styles.sessionHeader}>
           <View style={styles.sessionHeaderText}>
@@ -213,12 +473,10 @@ export default function AsistenRekapSesiScreen() {
               </Text>
               <Text style={styles.summaryCaption}>praktikan hadir</Text>
             </View>
-
             <View style={styles.percentCircle}>
               <Text style={styles.percentValue}>{persentase}%</Text>
             </View>
           </View>
-
           <View style={styles.progressTrack}>
             <View
               style={[
@@ -244,7 +502,7 @@ export default function AsistenRekapSesiScreen() {
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         >
-          {daftarTerurut.length === 0 ? (
+          {daftar.length === 0 ? (
             <View style={styles.emptyState}>
               <View style={styles.emptyIcon}>
                 <Text style={styles.emptyIconText}>—</Text>
@@ -255,12 +513,11 @@ export default function AsistenRekapSesiScreen() {
               </Text>
             </View>
           ) : (
-            daftarTerurut.map((praktikan, index) => (
+            daftar.map((praktikan, index) => (
               <View key={praktikan.id} style={styles.attendeeRow}>
                 <Text style={styles.attendeeNumber}>
                   {String(index + 1).padStart(2, "0")}
                 </Text>
-
                 <View style={styles.avatar}>
                   <Text style={styles.avatarText}>
                     {praktikan.nama
@@ -271,12 +528,10 @@ export default function AsistenRekapSesiScreen() {
                       .toUpperCase()}
                   </Text>
                 </View>
-
                 <View style={styles.attendeeInfo}>
                   <Text style={styles.attendeeName}>{praktikan.nama}</Text>
                   <Text style={styles.attendeeNim}>{praktikan.nim}</Text>
                 </View>
-
                 <View style={styles.timePill}>
                   <Text style={styles.timeText}>{praktikan.waktu}</Text>
                 </View>
@@ -293,8 +548,9 @@ export default function AsistenRekapSesiScreen() {
         {session.status === "dibuka" ? (
           <View style={styles.bottomAction}>
             <Tombol
-              label="Tutup Sesi"
+              label={menutup ? "Menutup…" : "Tutup Sesi"}
               variant="danger"
+              disabled={offline || menutup}
               onPress={() => setModalTutupTerbuka(true)}
             />
           </View>
@@ -327,7 +583,6 @@ export default function AsistenRekapSesiScreen() {
             onPress={() => setModalTutupTerbuka(false)}
             style={StyleSheet.absoluteFill}
           />
-
           <View style={styles.modalCard}>
             <View style={styles.modalIcon}>
               <Text style={styles.modalIconText}>!</Text>
@@ -336,14 +591,19 @@ export default function AsistenRekapSesiScreen() {
             <Text style={styles.modalDescription}>
               Presensi tidak bisa dilakukan lagi setelah sesi ditutup.
             </Text>
-
             <View style={styles.modalActions}>
               <Tombol
                 label="Batal"
                 variant="outline"
+                disabled={menutup}
                 onPress={() => setModalTutupTerbuka(false)}
               />
-              <Tombol label="Tutup Sesi" variant="danger" onPress={tutupSesi} />
+              <Tombol
+                label={menutup ? "Menutup…" : "Tutup Sesi"}
+                variant="danger"
+                disabled={menutup}
+                onPress={tutupSesi}
+              />
             </View>
           </View>
         </View>
@@ -762,4 +1022,14 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 19,
   },
+  offlineBanner: {
+    backgroundColor: WARNA.surface,
+    borderWidth: 1,
+    borderColor: WARNA.primary,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  offlineText: { color: WARNA.primary, fontSize: 13, fontWeight: "600" },
 });
