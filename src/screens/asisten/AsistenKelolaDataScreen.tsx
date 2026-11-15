@@ -31,6 +31,8 @@ import {
   setDocument,
   updateDocument,
 } from "../../services/firebase/firestore";
+import PraktikanPicker from "../../components/asisten/PraktikanPicker";
+import { useDaftarPraktikan } from "./useDaftarPraktikan";
 
 type DataKind = "praktikum" | "kelas" | "peserta" | "jadwal";
 type RecordItem = { id: string; aktif: boolean };
@@ -188,7 +190,7 @@ function RecordCard({
   title: string;
   detail: string;
   aktif: boolean;
-  onEdit: () => void;
+  onEdit?: () => void;
   onArchive: () => void;
   actionLabel: string;
 }) {
@@ -209,13 +211,11 @@ function RecordCard({
         </Text>
       </View>
       <View style={styles.cardActions}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={onEdit}
-          style={styles.actionButton}
-        >
-          <Text style={styles.actionText}>Ubah</Text>
-        </Pressable>
+        {onEdit ? (
+          <Pressable accessibilityRole="button" onPress={onEdit} style={styles.actionButton}>
+            <Text style={styles.actionText}>Ubah</Text>
+          </Pressable>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           onPress={onArchive}
@@ -232,6 +232,13 @@ function RecordCard({
 
 export default function AsistenKelolaDataScreen() {
   const { user, role } = useAuth();
+  const {
+    daftar: daftarPraktikan,
+    petaByUid,
+    loading: loadingPraktikan,
+    error: errorPraktikan,
+    muat: muatPraktikan,
+  } = useDaftarPraktikan(role === "asisten");
   const [kind, setKind] = useState<DataKind>("praktikum");
   const [praktikum, setPraktikum] = useState<PraktikumData[]>([]);
   const [kelas, setKelas] = useState<KelasData[]>([]);
@@ -356,6 +363,15 @@ export default function AsistenKelolaDataScreen() {
         })),
     [kelas, praktikum],
   );
+  const terdaftarDiKelas = useMemo(
+    () =>
+      new Map(
+        peserta
+          .filter((p) => p.kelasId === draft.kelasId)
+          .map((p) => [p.uid, p.aktif] as const),
+      ),
+    [peserta, draft.kelasId],
+  );
 
   const filtered = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("id-ID");
@@ -372,17 +388,19 @@ export default function AsistenKelolaDataScreen() {
           .includes(query),
       );
     if (kind === "peserta")
-      return peserta.filter((item) =>
-        `${item.uid} ${kelas.find((entry) => entry.id === item.kelasId)?.nama ?? ""}`
+      return peserta.filter((item) => {
+        const profil = petaByUid.get(item.uid);
+        const namaKelas = kelas.find((e) => e.id === item.kelasId)?.nama ?? "";
+        return `${profil?.nama ?? ""} ${profil?.nim ?? ""} ${item.uid} ${namaKelas}`
           .toLocaleLowerCase("id-ID")
-          .includes(query),
-      );
+          .includes(query);
+      });
     return jadwal.filter((item) =>
       `${item.tanggal} ${item.lokasi} ${kelas.find((entry) => entry.id === item.kelasId)?.nama ?? ""}`
         .toLocaleLowerCase("id-ID")
         .includes(query),
     );
-  }, [kind, jadwal, kelas, peserta, praktikum, search]);
+  }, [kind, jadwal, kelas, peserta, praktikum, search, petaByUid]);
 
   function updateDraft(field: keyof Draft, value: string) {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -427,6 +445,7 @@ export default function AsistenKelolaDataScreen() {
       });
     }
     setFormOpen(true);
+    if (nextKind === "peserta") void muatPraktikan();
   }
 
   async function saveRecord() {
@@ -466,12 +485,16 @@ export default function AsistenKelolaDataScreen() {
             createdAt: serverTimestamp(),
           });
       } else if (formKind === "peserta") {
-        if (!draft.uid.trim() || !draft.kelasId)
-          throw new Error("UID Praktikan dan kelas wajib diisi.");
-        await setDocument(
-          firestoreRefs.pesertaDoc(draft.kelasId, draft.uid.trim()),
-          { uid: draft.uid.trim(), aktif: true, joinedAt: serverTimestamp() },
-        );
+        if (!draft.kelasId) throw new Error("Pilih kelas terlebih dahulu.");
+        if (!draft.uid || !petaByUid.has(draft.uid))
+          throw new Error("Pilih Praktikan dari daftar.");
+        if (peserta.some((p) => p.kelasId === draft.kelasId && p.uid === draft.uid))
+          throw new Error("Praktikan ini sudah terdaftar di kelas tersebut.");
+        await setDocument(firestoreRefs.pesertaDoc(draft.kelasId, draft.uid), {
+          uid: draft.uid,
+          aktif: true,
+          joinedAt: serverTimestamp(),
+        });
       } else {
         const pertemuanKe = Number(draft.pertemuanKe);
         const validJam = (value: string) =>
@@ -681,23 +704,21 @@ export default function AsistenKelolaDataScreen() {
           />
         ));
     if (kind === "peserta")
-      return peserta
-        .filter((item) =>
-          `${item.uid} ${item.kelasId}`
-            .toLocaleLowerCase("id-ID")
-            .includes(search.trim().toLocaleLowerCase("id-ID")),
-        )
-        .map((item) => (
+      return (filtered as PesertaData[]).map((item) => {
+        const profil = petaByUid.get(item.uid);
+        const namaKelas =
+          kelas.find((entry) => entry.id === item.kelasId)?.nama ?? item.kelasId;
+        return (
           <RecordCard
             key={item.id}
-            title={item.uid}
-            detail={`Kelas ${item.kelasId}`}
+            title={profil?.nama ?? item.uid}
+            detail={`${profil?.nim ? `NIM ${profil.nim} · ` : ""}Kelas ${namaKelas}`}
             aktif={item.aktif}
-            onEdit={() => openForm("peserta", item.id)}
             onArchive={() => prepareArchive("peserta", item.id, item.aktif)}
             actionLabel={item.aktif ? "Kelola" : "Aktifkan"}
           />
-        ));
+        );
+      });
     return jadwal
       .filter((item) =>
         `${item.tanggal} ${item.lokasi} ${item.kelasId}`
@@ -754,23 +775,26 @@ export default function AsistenKelolaDataScreen() {
           />
         </>
       );
-    if (formKind === "peserta")
-      return (
-        <>
-          <Field
-            label="UID Praktikan"
-            value={draft.uid}
-            onChangeText={(value) => updateDraft("uid", value)}
-            placeholder="UID Firebase Auth"
-          />
-          <ChoiceChips
-            label="Kelas"
-            choices={classChoices}
-            selectedId={draft.kelasId}
-            onSelect={(value) => updateDraft("kelasId", value)}
-          />
-        </>
-      );
+      if (formKind === "peserta")
+        return (
+          <>
+            <ChoiceChips
+              label="Kelas"
+              choices={classChoices}
+              selectedId={draft.kelasId}
+              onSelect={(value) => updateDraft("kelasId", value)}
+            />
+            <PraktikanPicker
+              daftar={daftarPraktikan}
+              terdaftar={terdaftarDiKelas}
+              selectedUid={draft.uid}
+              onSelect={(uid) => updateDraft("uid", uid)}
+              loading={loadingPraktikan}
+              error={errorPraktikan}
+              onRetry={muatPraktikan}
+            />
+          </>
+        );
     return (
       <>
         <ChoiceChips
