@@ -31,7 +31,7 @@ import type {
   SesiDoc,
 } from '@/data/firestoreType';
 import type { UserProfile } from '@/data/types';
-import { db } from './index';
+import { rnDb } from './index';
 
 export type WithId<T> = T & { id: string };
 export type FirestoreListenerError = (error: FirestoreError) => void;
@@ -39,13 +39,13 @@ export type FirestoreListenerError = (error: FirestoreError) => void;
 function documentReference<T extends DocumentData>(
   ...path: string[]
 ): DocumentReference<T, T> {
-  return doc(db, path[0], ...path.slice(1)) as DocumentReference<T, T>;
+  return doc(rnDb, path[0], ...path.slice(1)) as DocumentReference<T, T>;
 }
 
 function collectionReference<T extends DocumentData>(
   ...path: string[]
 ): CollectionReference<T, T> {
-  return collection(db, path[0], ...path.slice(1)) as CollectionReference<T, T>;
+  return collection(rnDb, path[0], ...path.slice(1)) as CollectionReference<T, T>;
 }
 
 export const firestoreRefs = {

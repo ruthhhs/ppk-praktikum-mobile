@@ -9,7 +9,7 @@ import { Platform } from 'react-native';
 
 
 
-export const colors = {
+const baseColors = {
   bg: '#FFFFFF',
   surface: '#FEFFE0',
   text: '#17454A',
@@ -21,7 +21,19 @@ export const colors = {
   scrim: 'rgba(23, 69, 74, 0.5)',
 };
 
+export const colors = {
+  ...baseColors,
+  background: baseColors.bg,
+  backgroundElement: baseColors.surface,
+  backgroundSelected: baseColors.highlight,
+  textSecondary: baseColors.textMuted,
+};
+
 export type ThemeColor = keyof typeof colors;
+export const Colors = {
+  light: colors,
+  dark: colors,
+};
 export const Fonts = Platform.select({
   ios: {
     /** iOS `UIFontDescriptorSystemDesignDefault` */

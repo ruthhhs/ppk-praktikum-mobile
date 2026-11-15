@@ -13,7 +13,11 @@ import { dummyPresensi, dummySesi, dummyUsers } from '../../data/dummy';
 import type { Praktikum, Role, SesiStatus, User } from '../../data/types';
 import { useApp } from '../../hooks/useApp';
 import { klasifikasikanAlasanIzin } from '../../services/ai';
-import { auth, db, isFirebaseConfigured } from '../../services/firebase';
+import {
+  getWebAuth,
+  getWebFirestore,
+  isFirebaseConfigured,
+} from '../../services/firebase';
 
 export type { Praktikum, Role, SesiStatus, User };
 
@@ -490,7 +494,7 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
   });
 
   // 1. Listener Firebase Auth + dokumen users/{uid}
-  const authUnsub = onAuthStateChanged(auth, (fbUser) => {
+  const authUnsub = onAuthStateChanged(getWebAuth(), (fbUser) => {
     if (userProfileUnsub) {
       userProfileUnsub();
       userProfileUnsub = null;
@@ -505,7 +509,7 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
     }
 
     userProfileUnsub = onSnapshot(
-      doc(db, 'users', fbUser.uid),
+      doc(getWebFirestore(), 'users', fbUser.uid),
       (snap) => {
         if (snap.exists()) {
           const data = snap.data() as Record<string, unknown>;
@@ -547,7 +551,7 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
 
   // 2. Listener koleksi praktikum
   const praktikumUnsub = onSnapshot(
-    collection(db, 'praktikum'),
+    collection(getWebFirestore(), 'praktikum'),
     (snap) => {
       const items: Praktikum[] = [];
       snap.forEach((docSnap) => {
@@ -582,7 +586,7 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
 
   // 3. Listener koleksi kelas + subkoleksi kelas/{kelasId}/peserta/{uid}
   const kelasUnsub = onSnapshot(
-    collection(db, 'kelas'),
+    collection(getWebFirestore(), 'kelas'),
     (snap) => {
       const kelasItems: KelasFirestoreDoc[] = [];
       const currentKelasIds = new Set<string>();
@@ -622,7 +626,7 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
           continue;
         }
         const unsubPeserta = onSnapshot(
-          doc(db, 'kelas', kelasItem.id, 'peserta', activeUserId),
+          doc(getWebFirestore(), 'kelas', kelasItem.id, 'peserta', activeUserId),
           (pesertaSnap) => {
             const data = pesertaSnap.data() as Record<string, unknown> | undefined;
             const aktif = pesertaSnap.exists() && data?.aktif !== false;
@@ -650,7 +654,7 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
 
   // 4. Listener koleksi jadwal
   const jadwalUnsub = onSnapshot(
-    collection(db, 'jadwal'),
+    collection(getWebFirestore(), 'jadwal'),
     (snap) => {
       const items: JadwalFirestoreDoc[] = [];
       snap.forEach((docSnap) => {
@@ -691,7 +695,7 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
 
   // 5. Listener koleksi sesi + dokumen presensi/{uid} & pengajuanIzin/{uid}
   const sesiUnsub = onSnapshot(
-    collection(db, 'sesi'),
+    collection(getWebFirestore(), 'sesi'),
     (snap) => {
       const items: SesiFirestoreRaw[] = [];
       const currentSesiIds = new Set<string>();
@@ -772,7 +776,7 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
       for (const sesiItem of items) {
         if (!presensiUnsubs.has(sesiItem.id)) {
           const unsubPresensi = onSnapshot(
-            doc(db, 'sesi', sesiItem.id, 'presensi', activeUserId),
+            doc(getWebFirestore(), 'sesi', sesiItem.id, 'presensi', activeUserId),
             (presensiSnap) => {
               const nextMap = { ...localState.presensiFirestoreMap };
               if (presensiSnap.exists()) {
@@ -802,7 +806,7 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
 
         if (!izinUnsubs.has(sesiItem.id)) {
           const unsubIzin = onSnapshot(
-            doc(db, 'sesi', sesiItem.id, 'pengajuanIzin', activeUserId),
+            doc(getWebFirestore(), 'sesi', sesiItem.id, 'pengajuanIzin', activeUserId),
             (izinSnap) => {
               const nextIzinMap = { ...localState.izinFirestoreMap };
               if (izinSnap.exists()) {
@@ -857,7 +861,7 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
       const code = (err as { code?: string })?.code ?? '';
       // Jika permission-denied terjadi karena belum login ke Firebase Auth namun sedang mode simulasi lokal,
       // jangan kunci layar dengan error kecuali memang sudah login Firebase Auth.
-      if (code === 'permission-denied' && !auth.currentUser) {
+      if (code === 'permission-denied' && !getWebAuth().currentUser) {
         updateState({
           isLoadingFirestore: false,
           errorFirestore: null,
@@ -1140,7 +1144,6 @@ export function usePraktikanStore() {
       b.createdAt.localeCompare(a.createdAt),
     );
   }, [pengajuanIzinMap]);
-  const pengajuanIzinMap = snapshot.izinFirestoreMap;
 
   const catatPresensiPraktikan = async (
     sesiIdInput: string,
@@ -1259,12 +1262,15 @@ export function usePraktikanStore() {
 
       // Jika Firebase aktif dan sesi ada di Firestore (atau user login via Firebase Auth),
       // simpan dokumen ke sesi/{sesiId}/presensi/{uid} sesuai Kontrak Data Bagian 5 PRD2.md
-      if (isFirebaseConfigured && (isSesiDiFirestore || auth.currentUser)) {
+      if (
+        isFirebaseConfigured &&
+        (isSesiDiFirestore || getWebAuth().currentUser)
+      ) {
         const targetFirestoreSesiId = isSesiDiFirestore
           ? targetSesi.id
           : ubahKeIdSesiApp(sesiId);
         const presensiDocRef = doc(
-          db,
+          getWebFirestore(),
           'sesi',
           targetFirestoreSesiId,
           'presensi',
@@ -1436,9 +1442,12 @@ export function usePraktikanStore() {
         ? targetSesi.id
         : ubahKeIdSesiApp(sesiId);
 
-      if (isFirebaseConfigured && (isSesiDiFirestore || auth.currentUser)) {
+      if (
+        isFirebaseConfigured &&
+        (isSesiDiFirestore || getWebAuth().currentUser)
+      ) {
         const izinDocRefCheck = doc(
-          db,
+          getWebFirestore(),
           'sesi',
           targetFirestoreSesiId,
           'pengajuanIzin',
@@ -1460,9 +1469,12 @@ export function usePraktikanStore() {
       const hasilAI = await klasifikasikanAlasanIzin(alasanBersih);
       const waktuSekarang = new Date().toISOString();
 
-      if (isFirebaseConfigured && (isSesiDiFirestore || auth.currentUser)) {
+      if (
+        isFirebaseConfigured &&
+        (isSesiDiFirestore || getWebAuth().currentUser)
+      ) {
         const izinDocRef = doc(
-          db,
+          getWebFirestore(),
           'sesi',
           targetFirestoreSesiId,
           'pengajuanIzin',
