@@ -6,12 +6,7 @@
 // Rules bukan filter: tanpa where, query ditolak walau Rules mengizinkan
 // Asisten membaca profil Praktikan. Lihat aturan `users` di catatan.
 // =====================================================================
-import {
-  collection,
-  getDocs,
-  query,
-  where,
-} from "firebase/firestore";
+import { collection, getDocs, query, where } from "firebase/firestore";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { db } from "../../services/firebase";
 
