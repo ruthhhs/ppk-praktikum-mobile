@@ -465,6 +465,7 @@ export default function AsistenKelolaDataScreen() {
         else
           await addDocument(firestoreRefs.praktikum(), {
             ...value,
+            praktikanUids: [],
             createdAt: serverTimestamp(),
           });
       } else if (formKind === "kelas") {
@@ -482,6 +483,7 @@ export default function AsistenKelolaDataScreen() {
         else
           await addDocument(firestoreRefs.kelas(), {
             ...value,
+            praktikanUids: [],
             createdAt: serverTimestamp(),
           });
       } else if (formKind === "peserta") {
@@ -492,6 +494,7 @@ export default function AsistenKelolaDataScreen() {
           throw new Error("Praktikan ini sudah terdaftar di kelas tersebut.");
         await setDocument(firestoreRefs.pesertaDoc(draft.kelasId, draft.uid), {
           uid: draft.uid,
+          nama: petaByUid.get(draft.uid)?.nama ?? "",
           aktif: true,
           joinedAt: serverTimestamp(),
         });

@@ -1,14 +1,3 @@
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
-import { onAuthStateChanged } from '@react-native-firebase/auth';
-import {
-  collection,
-  doc,
-  getDoc,
-  onSnapshot,
-  serverTimestamp,
-  setDoc,
-  type Timestamp,
-} from '@react-native-firebase/firestore';
 import { useContext, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { colors } from '../../constants/theme';
 import { AuthContext } from '../../context/Auth.Context';
@@ -16,7 +5,7 @@ import { dummyPresensi, dummySesi, dummyUsers } from '../../data/dummy';
 import type { Praktikum, Role, SesiStatus, User } from '../../data/types';
 import { useApp } from '../../hooks/useApp';
 import { klasifikasikanAlasanIzin } from '../../services/ai';
-import { isFirebaseConfigured } from '../../services/firebase';
+import { auth, isFirebaseConfigured } from '../../services/firebase';
 import {
   firestoreRefs,
   listenCollection,
@@ -1504,7 +1493,7 @@ export function usePraktikanStore() {
     const hasFirebaseSession =
       isFirebaseConfigured &&
       isSesiDiFirestore &&
-      Boolean(auth.currentUser || authUser);
+      Boolean(auth?.currentUser || authUser);
 
     try {
       const waktuSekarang = new Date().toISOString();
@@ -1689,7 +1678,7 @@ export function usePraktikanStore() {
     const hasFirebaseSession =
       isFirebaseConfigured &&
       isSesiDiFirestore &&
-      Boolean(auth.currentUser || authUser);
+      Boolean(auth?.currentUser || authUser);
 
     try {
       // Panggil layanan AI untuk klasifikasi alasan (gagal tidak memblokir penyimpanan)

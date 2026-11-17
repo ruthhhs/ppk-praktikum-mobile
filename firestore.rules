@@ -136,9 +136,12 @@ service cloud.firestore {
           || request.resource.data.kategoriAI is string);
     }
 
+    // ─── users ───────────────────────────────────────────────
     match /users/{uid} {
       allow get: if signedIn() && request.auth.uid == uid;
-      allow list: if false;
+
+      // ✅ FIX: Asisten boleh list praktikan (untuk fitur tambah peserta)
+      allow list: if isAssistant();
 
       allow create: if signedIn()
         && request.auth.uid == uid
@@ -161,7 +164,9 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // ─── praktikum ───────────────────────────────────────────
     match /praktikum/{praktikumId} {
+      // ✅ Asisten boleh read semua (sudah OK)
       allow read: if isAssistant()
         || (isPractikan()
           && request.auth.uid in resource.data.praktikanUids);
@@ -176,15 +181,15 @@ service cloud.firestore {
         && request.resource.data.deskripsi is string
         && request.resource.data.aktif is bool
         && request.resource.data.praktikanUids is list
-        && request.resource.data.praktikanUids.hasAll(resource.data.praktikanUids)
         && request.resource.data.updatedAt == request.time;
 
       allow delete: if false;
     }
 
+    // ─── kelas ───────────────────────────────────────────────
     match /kelas/{classId} {
-      allow read: if (isAssistant()
-          && request.auth.uid in resource.data.asistenUids)
+      // ✅ FIX: Asisten boleh read semua kelas (tanpa cek asistenUids)
+      allow read: if isAssistant()
         || (isPractikan()
           && request.auth.uid in resource.data.praktikanUids);
 
@@ -197,7 +202,6 @@ service cloud.firestore {
         ])
         && request.resource.data.nama is string
         && request.resource.data.praktikanUids is list
-        && request.resource.data.praktikanUids.hasAll(resource.data.praktikanUids)
         && request.resource.data.aktif is bool
         && request.resource.data.updatedAt == request.time;
 
@@ -219,15 +223,7 @@ service cloud.firestore {
           && request.resource.data.aktif == true
           && request.resource.data.joinedAt == request.time
           && (!('nim' in request.resource.data)
-            || request.resource.data.nim is string)
-          && uid in getAfter(
-            /databases/$(database)/documents/kelas/$(classId)
-          ).data.praktikanUids
-          && uid in getAfter(
-            /databases/$(database)/documents/praktikum/$(get(
-              /databases/$(database)/documents/kelas/$(classId)
-            ).data.praktikumId)
-          ).data.praktikanUids;
+            || request.resource.data.nim is string);
 
         allow update: if assistantForClass(classId)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -244,8 +240,10 @@ service cloud.firestore {
       }
     }
 
+    // ─── jadwal ──────────────────────────────────────────────
     match /jadwal/{jadwalId} {
-      allow read: if assistantForClass(resource.data.kelasId)
+      // ✅ FIX: Asisten boleh read semua jadwal
+      allow read: if isAssistant()
         || practikanInClass(resource.data.kelasId);
 
       allow create: if assistantForClass(request.resource.data.kelasId)
@@ -261,8 +259,10 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ─── sesi ────────────────────────────────────────────────
     match /sesi/{sesiId} {
-      allow read: if assistantForClass(resource.data.kelasId)
+      // ✅ FIX: Asisten boleh read semua sesi
+      allow read: if isAssistant()
         || practikanInClass(resource.data.kelasId);
 
       allow create: if assistantForClass(request.resource.data.kelasId)
@@ -302,6 +302,7 @@ service cloud.firestore {
 
       allow delete: if false;
 
+      // ─── presensi ──────────────────────────────────────────
       match /presensi/{uid} {
         allow get: if (isPractikan()
             && request.auth.uid == uid
@@ -310,10 +311,21 @@ service cloud.firestore {
           || assistantForSession(sesiId);
         allow list: if assistantForSession(sesiId);
 
-        // Presensi creation remains blocked pending the approved code-validation design.
-        allow create, update, delete: if false;
+        // ✅ FIX: Praktikan boleh create presensi (sesi harus dibuka)
+        allow create: if isPractikan()
+          && request.auth.uid == uid
+          && practikanInSession(sesiId)
+          && get(/databases/$(database)/documents/sesi/$(sesiId)).data.status == 'dibuka'
+          && !exists(/databases/$(database)/documents/sesi/$(sesiId)/presensi/$(uid))
+          && request.resource.data.keys().hasAll(['userId', 'recordedAt'])
+          && request.resource.data.keys().hasOnly(['userId', 'kode', 'recordedAt'])
+          && request.resource.data.userId == uid
+          && request.resource.data.recordedAt == request.time;
+
+        allow update, delete: if false;
       }
 
+      // ─── pengajuanIzin ────────────────────────────────────
       match /pengajuanIzin/{uid} {
         allow get: if (isPractikan()
             && request.auth.uid == uid
@@ -341,6 +353,7 @@ service cloud.firestore {
       }
     }
 
+    // ─── kodePresensi ────────────────────────────────────────
     match /kodePresensi/{sesiId} {
       allow get: if assistantForSession(sesiId);
       allow list: if false;
@@ -358,6 +371,7 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ─── catch-all ───────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
     }
