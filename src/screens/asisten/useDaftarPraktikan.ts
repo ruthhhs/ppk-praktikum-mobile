@@ -6,9 +6,9 @@
 // Rules bukan filter: tanpa where, query ditolak walau Rules mengizinkan
 // Asisten membaca profil Praktikan. Lihat aturan `users` di catatan.
 // =====================================================================
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where } from "@react-native-firebase/firestore";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { db } from "../../services/firebase";
+import { rnAuth, rnDb } from "../../services/firebase";
 
 export type PraktikanProfil = {
   uid: string;
@@ -39,12 +39,13 @@ export function useDaftarPraktikan(aktif: boolean) {
     try {
       setLoading(true);
       setError("");
-      if (!db) {
-        setError("Firebase belum dikonfigurasi.");
+      const user = rnAuth.currentUser;
+      if (!user) {
+        setError("Pengguna belum login. Silakan login kembali.");
         return;
       }
       const snap = await getDocs(
-        query(collection(db, "users"), where("role", "==", "praktikan")),
+        query(collection(rnDb, "users"), where("role", "==", "praktikan")),
       );
       const hasil = snap.docs
         .map((d) => {

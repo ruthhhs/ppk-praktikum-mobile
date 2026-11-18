@@ -17,7 +17,15 @@ const baseColors = {
   accent: "#35C1C2",
   border: "rgba(23, 69, 74, 0.15)",
   scrim: "rgba(23, 69, 74, 0.5)",
-};
+} as const;
+
+export const colors = {
+  ...baseColors,
+  background: baseColors.bg,
+  backgroundElement: baseColors.surface,
+  backgroundSelected: baseColors.highlight,
+  textSecondary: baseColors.textMuted,
+} as const;
 
 export type ThemeColor = keyof typeof colors;
 export const Colors = {
