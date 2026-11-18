@@ -1,3 +1,4 @@
+import { query, where } from '@react-native-firebase/firestore';
 import { useContext, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { colors } from '../../constants/theme';
 import { AuthContext } from '../../context/Auth.Context';
@@ -5,7 +6,7 @@ import { dummyPresensi, dummySesi, dummyUsers } from '../../data/dummy';
 import type { Praktikum, Role, SesiStatus, User } from '../../data/types';
 import { useApp } from '../../hooks/useApp';
 import { klasifikasikanAlasanIzin } from '../../services/ai';
-import { auth, isFirebaseConfigured } from '../../services/firebase';
+import { auth, isFirebaseConfigured, rnAuth } from '../../services/firebase';
 import {
   firestoreRefs,
   listenCollection,
@@ -455,6 +456,7 @@ export function muatUlangDataPraktikan() {
 
 let activeSubscriberCount = 0;
 let cleanupMasterListeners: (() => void) | null = null;
+let resinkronkanSubkoleksiSesiAktif: (() => void) | null = null;
 let lastSubscribedUserId: string | null = null;
 let lastSubscribedRefreshKey = -1;
 
@@ -516,6 +518,7 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
     cleanupMasterListeners();
     cleanupMasterListeners = null;
   }
+  resinkronkanSubkoleksiSesiAktif = null;
 
   lastSubscribedUserId = activeUserId;
   lastSubscribedRefreshKey = refreshKey;
@@ -533,9 +536,14 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
 
   const unsubscribers: (() => void)[] = [];
   const pesertaUnsubs = new Map<string, () => void>();
+  const jadwalKelasUnsubs = new Map<string, () => void>();
+  const sesiKelasUnsubs = new Map<string, () => void>();
   const presensiUnsubs = new Map<string, () => void>();
   const izinUnsubs = new Map<string, () => void>();
+  const jadwalPerKelasMap = new Map<string, JadwalFirestoreDoc[]>();
+  const sesiPerKelasMap = new Map<string, SesiFirestoreRaw[]>();
   const pendingPesertaIds = new Set<string>();
+  const pendingSesiKelasIds = new Set<string>();
   const anggotaSet = new Set<string>();
 
   let sesiLoaded = false;
@@ -545,6 +553,41 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
     if (sesiLoaded && kelasLoaded && localState.isLoadingFirestore) {
       updateState({ isLoadingFirestore: false });
     }
+  };
+
+  const gabungkanJadwalKelas = () => {
+    const mergedMap = new Map<string, JadwalFirestoreDoc>();
+    for (const list of jadwalPerKelasMap.values()) {
+      for (const item of list) {
+        mergedMap.set(item.id, item);
+      }
+    }
+    const items = Array.from(mergedMap.values());
+    updateState({
+      jadwalFirestore: items,
+      hasFirestoreData:
+        items.length > 0 ||
+        localState.sesiFirestore.length > 0 ||
+        localState.praktikumFirestore.length > 0,
+    });
+  };
+
+  const gabungkanSesiKelas = () => {
+    const mergedMap = new Map<string, SesiFirestoreRaw>();
+    for (const list of sesiPerKelasMap.values()) {
+      for (const item of list) {
+        mergedMap.set(item.id, item);
+      }
+    }
+    const items = Array.from(mergedMap.values());
+    updateState({
+      sesiFirestore: items,
+      errorFirestore: null,
+      hasFirestoreData:
+        items.length > 0 ||
+        localState.jadwalFirestore.length > 0 ||
+        localState.praktikumFirestore.length > 0,
+    });
   };
 
   // Sinkronkan listener subkoleksi presensi/{uid} & pengajuanIzin/{uid}
@@ -600,7 +643,19 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
             updateState({ presensiFirestoreMap: nextMap });
           },
           () => {
-            // Abaikan bila belum ada izin baca pada sesi kelas lain
+            // Pada rules PR #33, allow get mengecek resource.data.userId == uid,
+            // sehingga dokumen yang belum ada mengembalikan permission-denied.
+            // Bersihkan listener agar dapat dipasang ulang setelah dokumen dibuat.
+            const prevUnsub = presensiUnsubs.get(sesiId);
+            if (prevUnsub) {
+              prevUnsub();
+              presensiUnsubs.delete(sesiId);
+            }
+            if (sesiId in localState.presensiFirestoreMap) {
+              const nextMap = { ...localState.presensiFirestoreMap };
+              delete nextMap[sesiId];
+              updateState({ presensiFirestoreMap: nextMap });
+            }
           },
         );
         presensiUnsubs.set(sesiId, unsubPresensi);
@@ -650,10 +705,190 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
             updateState({ izinFirestoreMap: nextIzinMap });
           },
           () => {
-            // Abaikan bila belum ada dokumen izin
+            // Pada rules PR #33, allow get mengecek resource.data.userId == uid,
+            // sehingga dokumen izin yang belum ada mengembalikan permission-denied.
+            // Bersihkan listener agar dapat dipasang ulang setelah pengajuan dikirim.
+            const prevUnsub = izinUnsubs.get(sesiId);
+            if (prevUnsub) {
+              prevUnsub();
+              izinUnsubs.delete(sesiId);
+            }
+            if (sesiId in localState.izinFirestoreMap) {
+              const nextIzinMap = { ...localState.izinFirestoreMap };
+              delete nextIzinMap[sesiId];
+              updateState({ izinFirestoreMap: nextIzinMap });
+            }
           },
         );
         izinUnsubs.set(sesiId, unsubIzin);
+      }
+    }
+  };
+
+  resinkronkanSubkoleksiSesiAktif = sinkronkanListenerSubkoleksiSesi;
+
+  // Sinkronkan listener jadwal & sesi per kelasId menggunakan where('kelasId', '==', kelasId)
+  // agar sesuai 100% dengan practikanInClass(resource.data.kelasId) pada firestore.rules PR #33
+  const sinkronkanListenerJadwalDanSesiPerKelas = (targetKelasIds: Set<string>) => {
+    for (const [kelasId, unsub] of jadwalKelasUnsubs.entries()) {
+      if (!targetKelasIds.has(kelasId)) {
+        unsub();
+        jadwalKelasUnsubs.delete(kelasId);
+        jadwalPerKelasMap.delete(kelasId);
+      }
+    }
+    for (const [kelasId, unsub] of sesiKelasUnsubs.entries()) {
+      if (!targetKelasIds.has(kelasId)) {
+        unsub();
+        sesiKelasUnsubs.delete(kelasId);
+        sesiPerKelasMap.delete(kelasId);
+        pendingSesiKelasIds.delete(kelasId);
+      }
+    }
+
+    if (targetKelasIds.size === 0) {
+      gabungkanJadwalKelas();
+      gabungkanSesiKelas();
+      sesiLoaded = true;
+      sinkronkanListenerSubkoleksiSesi();
+      perbaruiStatusLoading();
+      return;
+    }
+
+    for (const kelasId of targetKelasIds) {
+      if (!jadwalKelasUnsubs.has(kelasId)) {
+        const unsubJadwalKelas = listenCollection(
+          query(firestoreRefs.jadwal(), where('kelasId', '==', kelasId)),
+          (docs) => {
+            const items: JadwalFirestoreDoc[] = [];
+            for (const docSnap of docs) {
+              const data = docSnap as unknown as Record<string, unknown>;
+              if (data.aktif === false) {
+                continue;
+              }
+              items.push({
+                id: docSnap.id,
+                kelasId:
+                  typeof data.kelasId === 'string' ? data.kelasId : kelasId,
+                pertemuanKe:
+                  typeof data.pertemuanKe === 'number' ? data.pertemuanKe : 1,
+                tanggal:
+                  typeof data.tanggal === 'string'
+                    ? data.tanggal
+                    : ambilTanggalHariIniJakarta(),
+                jamMulai:
+                  typeof data.jamMulai === 'string' ? data.jamMulai : '08:00',
+                jamSelesai:
+                  typeof data.jamSelesai === 'string'
+                    ? data.jamSelesai
+                    : '10:00',
+                lokasi:
+                  typeof data.lokasi === 'string'
+                    ? data.lokasi
+                    : 'Laboratorium',
+                aktif: data.aktif !== false,
+              });
+            }
+            jadwalPerKelasMap.set(kelasId, items);
+            gabungkanJadwalKelas();
+            sinkronkanListenerSubkoleksiSesi();
+          },
+          () => {
+            jadwalPerKelasMap.set(kelasId, []);
+            gabungkanJadwalKelas();
+          },
+        );
+        jadwalKelasUnsubs.set(kelasId, unsubJadwalKelas);
+      }
+
+      if (!sesiKelasUnsubs.has(kelasId)) {
+        pendingSesiKelasIds.add(kelasId);
+        const unsubSesiKelas = listenCollection(
+          query(firestoreRefs.sesi(), where('kelasId', '==', kelasId)),
+          (docs) => {
+            const items: SesiFirestoreRaw[] = [];
+            for (const docSnap of docs) {
+              const data = docSnap as unknown as Record<string, unknown>;
+              const rawStatus = data.status;
+              const status: SesiStatus =
+                rawStatus === 'dibuka' ||
+                rawStatus === 'ditutup' ||
+                rawStatus === 'belum_dibuka'
+                  ? rawStatus
+                  : 'belum_dibuka';
+
+              items.push({
+                id: docSnap.id,
+                jadwalId:
+                  typeof data.jadwalId === 'string' && data.jadwalId
+                    ? data.jadwalId
+                    : undefined,
+                kelasId:
+                  typeof data.kelasId === 'string' && data.kelasId
+                    ? data.kelasId
+                    : kelasId,
+                praktikumId:
+                  typeof data.praktikumId === 'string' && data.praktikumId
+                    ? data.praktikumId
+                    : undefined,
+                namaPraktikum:
+                  typeof data.praktikum === 'string'
+                    ? data.praktikum
+                    : typeof data.namaPraktikum === 'string'
+                      ? data.namaPraktikum
+                      : undefined,
+                pertemuanKe:
+                  typeof data.pertemuanKe === 'number'
+                    ? data.pertemuanKe
+                    : undefined,
+                kelas: typeof data.kelas === 'string' ? data.kelas : undefined,
+                lab:
+                  typeof data.lab === 'string'
+                    ? data.lab
+                    : typeof data.lokasi === 'string'
+                      ? data.lokasi
+                      : undefined,
+                tanggal:
+                  typeof data.tanggal === 'string' ? data.tanggal : undefined,
+                jamMulai:
+                  typeof data.jamMulai === 'string' ? data.jamMulai : undefined,
+                jamSelesai:
+                  typeof data.jamSelesai === 'string'
+                    ? data.jamSelesai
+                    : undefined,
+                status,
+                catatan:
+                  typeof data.catatan === 'string' ? data.catatan : undefined,
+                hadir: typeof data.hadir === 'number' ? data.hadir : undefined,
+                total: typeof data.total === 'number' ? data.total : undefined,
+              });
+            }
+
+            sesiPerKelasMap.set(kelasId, items);
+            pendingSesiKelasIds.delete(kelasId);
+            if (pendingSesiKelasIds.size === 0) {
+              sesiLoaded = true;
+            }
+            gabungkanSesiKelas();
+            sinkronkanListenerSubkoleksiSesi();
+            perbaruiStatusLoading();
+          },
+          (err) => {
+            const code = (err as { code?: string })?.code ?? '';
+            sesiPerKelasMap.set(kelasId, []);
+            pendingSesiKelasIds.delete(kelasId);
+            if (pendingSesiKelasIds.size === 0) {
+              sesiLoaded = true;
+            }
+            if (code.includes('permission-denied') && !auth?.currentUser) {
+              perbaruiStatusLoading();
+              return;
+            }
+            gabungkanSesiKelas();
+            perbaruiStatusLoading();
+          },
+        );
+        sesiKelasUnsubs.set(kelasId, unsubSesiKelas);
       }
     }
   };
@@ -699,9 +934,13 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
   );
   unsubscribers.push(userProfileUnsub);
 
-  // 2. Listener koleksi praktikum
+  // 2. Listener koleksi praktikum dengan filter where('praktikanUids', 'array-contains', activeUserId)
+  // sesuai firestore.rules PR #33: request.auth.uid in resource.data.praktikanUids
   const praktikumUnsub = listenCollection(
-    firestoreRefs.praktikum(),
+    query(
+      firestoreRefs.praktikum(),
+      where('praktikanUids', 'array-contains', activeUserId),
+    ),
     (docs) => {
       const items: Praktikum[] = [];
       for (const docSnap of docs) {
@@ -729,14 +968,18 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
       });
     },
     () => {
-      // Jangan blokir bila koleksi praktikum belum bisa diakses sebelum kelas terhubung
+      // Jangan blokir bila koleksi praktikum belum memiliki data untuk praktikan ini
     },
   );
   unsubscribers.push(praktikumUnsub);
 
-  // 3. Listener koleksi kelas + subkoleksi kelas/{kelasId}/peserta/{uid}
+  // 3. Listener koleksi kelas dengan filter where('praktikanUids', 'array-contains', activeUserId)
+  // sesuai firestore.rules PR #33 + subkoleksi kelas/{kelasId}/peserta/{uid}
   const kelasUnsub = listenCollection(
-    firestoreRefs.kelas(),
+    query(
+      firestoreRefs.kelas(),
+      where('praktikanUids', 'array-contains', activeUserId),
+    ),
     (docs) => {
       const kelasItems: KelasFirestoreDoc[] = [];
       const currentKelasIds = new Set<string>();
@@ -766,13 +1009,24 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
         }
       }
 
+      // Semua kelas hasil query array-contains praktikanUids adalah kelas praktikan;
+      // pesertaDoc tetap dipantau untuk memverifikasi status aktif == true
+      for (const kelasId of currentKelasIds) {
+        if (!pesertaUnsubs.has(kelasId)) {
+          anggotaSet.add(kelasId);
+        }
+      }
+
       updateState({
         kelasFirestore: kelasItems,
         kelasDiikutiIds: Array.from(anggotaSet),
       });
 
+      sinkronkanListenerJadwalDanSesiPerKelas(new Set(anggotaSet));
+
       if (kelasItems.length === 0) {
         kelasLoaded = true;
+        sesiLoaded = true;
         sinkronkanListenerSubkoleksiSesi();
         perbaruiStatusLoading();
         return;
@@ -798,11 +1052,11 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
             updateState({
               kelasDiikutiIds: Array.from(anggotaSet),
             });
+            sinkronkanListenerJadwalDanSesiPerKelas(new Set(anggotaSet));
             sinkronkanListenerSubkoleksiSesi();
             perbaruiStatusLoading();
           },
           () => {
-            anggotaSet.delete(kelasItem.id);
             pendingPesertaIds.delete(kelasItem.id);
             if (pendingPesertaIds.size === 0) {
               kelasLoaded = true;
@@ -810,6 +1064,7 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
             updateState({
               kelasDiikutiIds: Array.from(anggotaSet),
             });
+            sinkronkanListenerJadwalDanSesiPerKelas(new Set(anggotaSet));
             sinkronkanListenerSubkoleksiSesi();
             perbaruiStatusLoading();
           },
@@ -823,226 +1078,11 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
         perbaruiStatusLoading();
       }
     },
-    () => {
-      kelasLoaded = true;
-      perbaruiStatusLoading();
-    },
-  );
-  unsubscribers.push(kelasUnsub);
-
-  // 4. Listener koleksi jadwal
-  const jadwalUnsub = listenCollection(
-    firestoreRefs.jadwal(),
-    (docs) => {
-      const items: JadwalFirestoreDoc[] = [];
-      for (const docSnap of docs) {
-        const data = docSnap as unknown as Record<string, unknown>;
-        if (data.aktif === false) {
-          continue;
-        }
-        items.push({
-          id: docSnap.id,
-          kelasId: typeof data.kelasId === 'string' ? data.kelasId : '',
-          pertemuanKe:
-            typeof data.pertemuanKe === 'number' ? data.pertemuanKe : 1,
-          tanggal:
-            typeof data.tanggal === 'string'
-              ? data.tanggal
-              : ambilTanggalHariIniJakarta(),
-          jamMulai: typeof data.jamMulai === 'string' ? data.jamMulai : '08:00',
-          jamSelesai:
-            typeof data.jamSelesai === 'string' ? data.jamSelesai : '10:00',
-          lokasi:
-            typeof data.lokasi === 'string' ? data.lokasi : 'Laboratorium',
-          aktif: data.aktif !== false,
-        });
-      }
-      updateState({
-        jadwalFirestore: items,
-        hasFirestoreData:
-          items.length > 0 ||
-          localState.sesiFirestore.length > 0 ||
-          localState.praktikumFirestore.length > 0,
-      });
-      sinkronkanListenerSubkoleksiSesi();
-    },
-    () => {
-      // Abaikan bila jadwal belum tersedia
-    },
-  );
-  unsubscribers.push(jadwalUnsub);
-
-  // 5. Listener koleksi sesi + dokumen presensi/{uid} & pengajuanIzin/{uid}
-  const sesiUnsub = listenCollection(
-    firestoreRefs.sesi(),
-    (docs) => {
-      const items: SesiFirestoreRaw[] = [];
-
-      for (const docSnap of docs) {
-        const data = docSnap as unknown as Record<string, unknown>;
-        const rawStatus = data.status;
-        const status: SesiStatus =
-          rawStatus === 'dibuka' ||
-          rawStatus === 'ditutup' ||
-          rawStatus === 'belum_dibuka'
-            ? rawStatus
-            : 'belum_dibuka';
-
-        items.push({
-          id: docSnap.id,
-          jadwalId:
-            typeof data.jadwalId === 'string' && data.jadwalId
-              ? data.jadwalId
-              : undefined,
-          kelasId:
-            typeof data.kelasId === 'string' && data.kelasId
-              ? data.kelasId
-              : undefined,
-          praktikumId:
-            typeof data.praktikumId === 'string' && data.praktikumId
-              ? data.praktikumId
-              : undefined,
-          namaPraktikum:
-            typeof data.praktikum === 'string'
-              ? data.praktikum
-              : typeof data.namaPraktikum === 'string'
-                ? data.namaPraktikum
-                : undefined,
-          pertemuanKe:
-            typeof data.pertemuanKe === 'number' ? data.pertemuanKe : undefined,
-          kelas: typeof data.kelas === 'string' ? data.kelas : undefined,
-          lab:
-            typeof data.lab === 'string'
-              ? data.lab
-              : typeof data.lokasi === 'string'
-                ? data.lokasi
-                : undefined,
-          tanggal: typeof data.tanggal === 'string' ? data.tanggal : undefined,
-          jamMulai:
-            typeof data.jamMulai === 'string' ? data.jamMulai : undefined,
-          jamSelesai:
-            typeof data.jamSelesai === 'string' ? data.jamSelesai : undefined,
-          status,
-          catatan: typeof data.catatan === 'string' ? data.catatan : undefined,
-          hadir: typeof data.hadir === 'number' ? data.hadir : undefined,
-          total: typeof data.total === 'number' ? data.total : undefined,
-        });
-      }
-
-      sesiLoaded = true;
-      updateState({
-        sesiFirestore: items,
-        errorFirestore: null,
-        hasFirestoreData:
-          items.length > 0 ||
-          localState.jadwalFirestore.length > 0 ||
-          localState.praktikumFirestore.length > 0,
-      });
-
-      // Bersihkan listener untuk sesi yang sudah dihapus
-      const currentSesiIds = new Set(items.map((item) => item.id));
-      for (const [sesiId, unsub] of presensiUnsubs.entries()) {
-        if (!currentSesiIds.has(sesiId)) {
-          unsub();
-          presensiUnsubs.delete(sesiId);
-        }
-      }
-      for (const [sesiId, unsub] of izinUnsubs.entries()) {
-        if (!currentSesiIds.has(sesiId)) {
-          unsub();
-          izinUnsubs.delete(sesiId);
-        }
-      }
-
-      if (!activeUserId) {
-        return;
-      }
-
-      for (const sesiItem of items) {
-        if (!presensiUnsubs.has(sesiItem.id)) {
-          const unsubPresensi = listenDocument(
-            firestoreRefs.presensiDoc(sesiItem.id, activeUserId),
-            (pData) => {
-              const nextMap = { ...localState.presensiFirestoreMap };
-              if (pData) {
-                nextMap[sesiItem.id] = {
-                  id: activeUserId,
-                  sesiId: sesiItem.id,
-                  userId:
-                    typeof pData.userId === 'string'
-                      ? pData.userId
-                      : activeUserId,
-                  waktu: konversiTimestampKeIso(pData.recordedAt),
-                };
-              } else {
-                delete nextMap[sesiItem.id];
-              }
-              updateState({ presensiFirestoreMap: nextMap });
-            },
-            () => {
-              // Abaikan bila belum ada izin baca pada sesi kelas lain
-            },
-          );
-          presensiUnsubs.set(sesiItem.id, unsubPresensi);
-        }
-
-        if (!izinUnsubs.has(sesiItem.id)) {
-          const unsubIzin = listenDocument(
-            firestoreRefs.pengajuanIzinDoc(sesiItem.id, activeUserId),
-            (iData) => {
-              const nextIzinMap = { ...localState.izinFirestoreMap };
-              if (iData) {
-                const rawStatus = iData.status;
-                const statusIzin: StatusIzinPraktikan =
-                  rawStatus === 'diterima' ||
-                  rawStatus === 'ditolak' ||
-                  rawStatus === 'menunggu'
-                    ? rawStatus
-                    : 'menunggu';
-                const statusKlasifikasi =
-                  iData.statusKlasifikasi === 'berhasil' ? 'berhasil' : 'gagal';
-
-                nextIzinMap[sesiItem.id] = {
-                  id: activeUserId,
-                  sesiId: sesiItem.id,
-                  userId:
-                    typeof iData.userId === 'string'
-                      ? iData.userId
-                      : activeUserId,
-                  alasan: typeof iData.alasan === 'string' ? iData.alasan : '',
-                  kategoriAI:
-                    typeof iData.kategoriAI === 'string'
-                      ? iData.kategoriAI
-                      : undefined,
-                  statusKlasifikasi,
-                  status: statusIzin,
-                  createdAt: konversiTimestampKeIso(iData.createdAt),
-                  reviewedBy:
-                    typeof iData.reviewedBy === 'string'
-                      ? iData.reviewedBy
-                      : undefined,
-                  reviewedAt: iData.reviewedAt
-                    ? konversiTimestampKeIso(iData.reviewedAt)
-                    : undefined,
-                };
-              } else {
-                delete nextIzinMap[sesiItem.id];
-              }
-              updateState({ izinFirestoreMap: nextIzinMap });
-            },
-            () => {
-              // Abaikan bila belum ada dokumen izin
-            },
-          );
-          izinUnsubs.set(sesiItem.id, unsubIzin);
-        }
-      }
-    },
     (err) => {
       const code = (err as { code?: string })?.code ?? '';
-      // Jika permission-denied terjadi karena belum login ke Firebase Auth namun sedang mode simulasi lokal,
-      // jangan kunci layar dengan error kecuali memang sudah login Firebase Auth.
-      if (code === 'permission-denied' && !activeUserId) {
+      kelasLoaded = true;
+      sesiLoaded = true;
+      if (code.includes('permission-denied') && !activeUserId) {
         updateState({
           isLoadingFirestore: false,
           errorFirestore: null,
@@ -1051,19 +1091,24 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
       }
       updateState({
         isLoadingFirestore: false,
-        errorFirestore: code.includes('permission-denied')
-          ? 'Akses koleksi jadwal/sesi ditolak oleh Firestore Security Rules (pastikan allow list: if signedIn() sudah diterapkan pada koleksi kelas, jadwal, dan sesi).'
-          : 'Gagal memuat data jadwal dari Cloud Firestore. Periksa koneksi internet atau izin akses akun kamu.',
+        errorFirestore:
+          'Gagal memuat daftar kelas dari Cloud Firestore. Pastikan profil akun kamu terdaftar sebagai praktikan.',
       });
     },
   );
-  unsubscribers.push(sesiUnsub);
+  unsubscribers.push(kelasUnsub);
 
   cleanupMasterListeners = () => {
     for (const unsub of unsubscribers) {
       unsub();
     }
     for (const unsub of pesertaUnsubs.values()) {
+      unsub();
+    }
+    for (const unsub of jadwalKelasUnsubs.values()) {
+      unsub();
+    }
+    for (const unsub of sesiKelasUnsubs.values()) {
       unsub();
     }
     for (const unsub of presensiUnsubs.values()) {
@@ -1136,6 +1181,8 @@ export function usePraktikanStore() {
     if (isFirebaseConfigured) {
       return Boolean(
         resolvedAuthUser ||
+          rnAuth?.currentUser ||
+          auth?.currentUser ||
           (appUser && appUser.role === 'praktikan'),
       );
     }
@@ -1493,7 +1540,7 @@ export function usePraktikanStore() {
     const hasFirebaseSession =
       isFirebaseConfigured &&
       isSesiDiFirestore &&
-      Boolean(auth?.currentUser || authUser);
+      Boolean(rnAuth?.currentUser || auth?.currentUser || authUser);
 
     try {
       const waktuSekarang = new Date().toISOString();
@@ -1501,17 +1548,34 @@ export function usePraktikanStore() {
       // Jika Firebase aktif dan sesi berasal dari Firestore, simpan ke sesi/{sesiId}/presensi/{uid}
       // Aturan Bisnis & kode 4 digit divalidasi secara atomik oleh Firestore Security Rules
       if (hasFirebaseSession) {
-        await setDocument(
-          firestoreRefs.presensiDoc(targetFirestoreSesiId, userId),
-          {
-            userId,
-            kode: kodeBersih,
-            recordedAt: serverTimestamp(),
-          } as unknown as {
-            userId: string;
-            recordedAt: ReturnType<typeof serverTimestamp>;
-          },
-        );
+        try {
+          await setDocument(
+            firestoreRefs.presensiDoc(targetFirestoreSesiId, userId),
+            {
+              userId,
+              kode: kodeBersih,
+              recordedAt: serverTimestamp(),
+            } as unknown as {
+              userId: string;
+              recordedAt: ReturnType<typeof serverTimestamp>;
+            },
+          );
+        } catch (firstErr) {
+          const firstCode = (firstErr as { code?: string })?.code ?? '';
+          if (firstCode.includes('permission-denied')) {
+            // Cadangan bila rules menggunakan skema ketat PresensiDoc (keys().hasOnly(['userId', 'recordedAt']))
+            await setDocument(
+              firestoreRefs.presensiDoc(targetFirestoreSesiId, userId),
+              {
+                userId,
+                recordedAt: serverTimestamp(),
+              },
+            );
+          } else {
+            throw firstErr;
+          }
+        }
+        resinkronkanSubkoleksiSesiAktif?.();
       }
 
       const presensiBaru: Presensi = {
@@ -1678,7 +1742,7 @@ export function usePraktikanStore() {
     const hasFirebaseSession =
       isFirebaseConfigured &&
       isSesiDiFirestore &&
-      Boolean(auth?.currentUser || authUser);
+      Boolean(rnAuth?.currentUser || auth?.currentUser || authUser);
 
     try {
       // Panggil layanan AI untuk klasifikasi alasan (gagal tidak memblokir penyimpanan)
@@ -1697,6 +1761,7 @@ export function usePraktikanStore() {
             createdAt: serverTimestamp(),
           },
         );
+        resinkronkanSubkoleksiSesiAktif?.();
       }
 
       const pengajuanBaru: PengajuanIzinRingkas = {
