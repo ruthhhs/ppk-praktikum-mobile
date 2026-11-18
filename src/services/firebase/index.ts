@@ -30,6 +30,7 @@ export const auth = app ? getAuth(app) : null;
 export const db = app ? getFirestore(app) : null;
 export const rnAuth = getReactNativeAuth();
 export const rnDb = getReactNativeFirestore();
+export const isNativeFirebaseConfigured = Boolean(rnDb.app.options.projectId);
 
 export function getWebAuth() {
   if (!auth) {

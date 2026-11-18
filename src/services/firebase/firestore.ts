@@ -1,16 +1,18 @@
 import {
   addDoc,
   collection,
+  collectionGroup,
   deleteDoc,
   doc,
   getDoc,
   getDocs,
   onSnapshot,
+  query,
   setDoc,
   updateDoc,
+  where,
   serverTimestamp,
 } from '@react-native-firebase/firestore';
-export { serverTimestamp } from '@react-native-firebase/firestore';
 import type {
   CollectionReference,
   DocumentData,
@@ -34,7 +36,10 @@ import type {
 import type { UserProfile } from '@/data/types';
 import { rnDb } from './index';
 
+export { serverTimestamp } from '@react-native-firebase/firestore';
+
 export type WithId<T> = T & { id: string };
+export type WithKelasId<T> = WithId<T> & { kelasId: string };
 export type FirestoreListenerError = (error: FirestoreError) => void;
 
 function documentReference<T extends DocumentData>(
@@ -109,6 +114,36 @@ export function listenCollection<T extends DocumentData>(
   );
 }
 
+export function listenKeanggotaanPraktikan(
+  uid: string,
+  onValue: (value: WithKelasId<PesertaDoc>[]) => void,
+  onError: FirestoreListenerError,
+): Unsubscribe {
+  const membershipQuery = query(
+    collectionGroup(rnDb, 'peserta'),
+    where('uid', '==', uid),
+  );
+
+  return onSnapshot(
+    membershipQuery,
+    (snapshot) => {
+      const memberships: WithKelasId<PesertaDoc>[] = [];
+      for (const documentSnapshot of snapshot.docs) {
+        const kelasId = documentSnapshot.ref.parent.parent?.id;
+        if (!kelasId) continue;
+
+        memberships.push({
+          ...documentSnapshot.data(),
+          id: documentSnapshot.id,
+          kelasId,
+        } as WithKelasId<PesertaDoc>);
+      }
+      onValue(memberships);
+    },
+    onError,
+  );
+}
+
 export async function readDocument<T extends DocumentData>(
   reference: DocumentReference<T, T>,
 ): Promise<T | null> {
@@ -155,8 +190,9 @@ export function removeDocument<T extends DocumentData>(
 }
 
 export async function ambilDaftarPraktikan(): Promise<WithId<UserProfile>[]> {
-  const allUsers = await readCollection(firestoreRefs.users());
-  return allUsers.filter((u) => u.role === "praktikan");
+  return readCollection(
+    query(firestoreRefs.users(), where('role', '==', 'praktikan')),
+  );
 }
 
 export function tambahPeserta(kelasId: string, uid: string, nama = ""): Promise<void> {

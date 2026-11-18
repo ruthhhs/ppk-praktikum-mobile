@@ -699,7 +699,7 @@ export default function AsistenKelolaDataScreen() {
           <RecordCard
             key={item.id}
             title={`Kelas ${item.nama}`}
-            detail={`Praktikum ${item.praktikumId} · ${item.asistenUids.length} Asisten`}
+            detail={`Praktikum ${praktikum.find((course) => course.id === item.praktikumId)?.nama } · · ${item.asistenUids.length} Asisten`}
             aktif={item.aktif}
             onEdit={() => openForm("kelas", item.id)}
             onArchive={() => prepareArchive("kelas", item.id, item.aktif)}
@@ -732,7 +732,7 @@ export default function AsistenKelolaDataScreen() {
         <RecordCard
           key={item.id}
           title={`Pertemuan ${item.pertemuanKe} · ${item.tanggal}`}
-          detail={`Kelas ${item.kelasId} · ${item.jamMulai}–${item.jamSelesai} · ${item.lokasi}`}
+          detail={`Kelas ${ kelas.find((entry) => entry.id === item.kelasId)?.nama} · ${item.jamMulai}–${item.jamSelesai} · ${item.lokasi}`}
           aktif={item.aktif}
           onEdit={() => openForm("jadwal", item.id)}
           onArchive={() => prepareArchive("jadwal", item.id, item.aktif)}
