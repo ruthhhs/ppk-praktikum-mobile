@@ -159,9 +159,10 @@ export async function ambilDaftarPraktikan(): Promise<WithId<UserProfile>[]> {
   return allUsers.filter((u) => u.role === "praktikan");
 }
 
-export function tambahPeserta(kelasId: string, uid: string): Promise<void> {
+export function tambahPeserta(kelasId: string, uid: string, nama = ""): Promise<void> {
   return setDocument(firestoreRefs.pesertaDoc(kelasId, uid), {
     uid,
+    nama,
     aktif: true,
     joinedAt: serverTimestamp(),
   });
