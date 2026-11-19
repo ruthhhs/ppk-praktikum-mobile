@@ -12,7 +12,11 @@ import {
   updateDoc,
   where,
   serverTimestamp,
+  arrayUnion,
+  writeBatch,
 } from '@react-native-firebase/firestore';
+
+export { serverTimestamp } from '@react-native-firebase/firestore';
 import type {
   CollectionReference,
   DocumentData,
@@ -35,8 +39,6 @@ import type {
 } from '@/data/firestoreType';
 import type { UserProfile } from '@/data/types';
 import { rnDb } from './index';
-
-export { serverTimestamp } from '@react-native-firebase/firestore';
 
 export type WithId<T> = T & { id: string };
 export type WithKelasId<T> = WithId<T> & { kelasId: string };
@@ -147,6 +149,8 @@ export function listenKeanggotaanPraktikan(
 export async function readDocument<T extends DocumentData>(
   reference: DocumentReference<T, T>,
 ): Promise<T | null> {
+  console.log("READ DOCUMENT PATH:", reference.path);
+
   const snapshot = await getDoc(reference);
   return snapshot.exists() ? snapshot.data() : null;
 }
@@ -195,13 +199,26 @@ export async function ambilDaftarPraktikan(): Promise<WithId<UserProfile>[]> {
   );
 }
 
-export function tambahPeserta(kelasId: string, uid: string, nama = ""): Promise<void> {
-  return setDocument(firestoreRefs.pesertaDoc(kelasId, uid), {
+export async function tambahPeserta(
+  kelasId: string,
+  uid: string,
+  nama = "",
+): Promise<void> {
+  const batch = writeBatch(rnDb);
+
+  batch.set(firestoreRefs.pesertaDoc(kelasId, uid), {
     uid,
     nama,
     aktif: true,
     joinedAt: serverTimestamp(),
   });
+
+  batch.update(firestoreRefs.kelasDoc(kelasId), {
+    praktikanUids: arrayUnion(uid),
+    updatedAt: serverTimestamp(),
+  });
+
+  await batch.commit();
 }
 
 export function pantauPesertaKelas(
