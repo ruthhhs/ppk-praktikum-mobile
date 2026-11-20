@@ -28,6 +28,26 @@ export default function AsistenLayout() {
         />
 
         <Tabs.Screen
+          name="peta"
+          options={{
+            title: "Peta",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="map-outline" size={size} color={color} />
+            ),
+          }}
+        />
+
+        <Tabs.Screen
+          name="notifikasi"
+          options={{
+            title: "Notifikasi",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="notifications-outline" size={size} color={color} />
+            ),
+          }}
+        />
+
+        <Tabs.Screen
           name="profil"
           options={{
             title: "Profil",
@@ -37,28 +57,12 @@ export default function AsistenLayout() {
           }}
         />
 
-        <Tabs.Screen
-          name="detail-sesi"
-          options={{
-            href: null,
-          }}
-        />
-
-        <Tabs.Screen
-          name="rekap-sesi"
-          options={{
-            href: null,
-          }}
-        />
-
-        <Tabs.Screen
-          name="data"
-          options={{
-            href: null,
-          }}
-        />
+        <Tabs.Screen name="detail-sesi" options={{ href: null }} />
+        <Tabs.Screen name="rekap-sesi" options={{ href: null }} />
+        <Tabs.Screen name="data" options={{ href: null }} />
         <Tabs.Screen name="kelola-sesi" options={{ href: null }} />
         <Tabs.Screen name="izin" options={{ href: null }} />
+        <Tabs.Screen name="laboratorium" options={{ href: null }} />
       </Tabs>
     </AsistenWorkflowStoreProvider>
   );
