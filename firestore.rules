@@ -2,13 +2,10 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ---------- fungsi bantu ----------
-    // Memastikan request berasal dari pengguna yang sudah login.
     function signedIn() {
       return request.auth != null;
     }
 
-    // Memeriksa role dari profil Firestore, bukan dari data yang dikirim client.
     function isAsisten() {
       return signedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
@@ -21,7 +18,6 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'praktikan';
     }
 
-    // Path dokumen dipusatkan di helper agar konsisten dipakai oleh Rules lain.
     function classPath(kelasId) {
       return /databases/$(database)/documents/kelas/$(kelasId);
     }
@@ -46,7 +42,6 @@ service cloud.firestore {
       return /databases/$(database)/documents/kodePresensi/$(sesiId);
     }
 
-    // Asisten hanya dapat mengelola kelas yang UID-nya tercatat di asistenUids.
     function assistantOwnsClass(kelasId) {
       return isAsisten()
         && exists(classPath(kelasId))
@@ -54,7 +49,6 @@ service cloud.firestore {
         && request.auth.uid in get(classPath(kelasId)).data.asistenUids;
     }
 
-    // Praktikan harus terdaftar dan masih aktif pada kelas tersebut.
     function activeParticipant(kelasId, uid) {
       return isPraktikan()
         && exists(classPath(kelasId))
@@ -70,8 +64,6 @@ service cloud.firestore {
         && get(participantPath(kelasId, uid)).data.uid == uid;
     }
 
-    // Keanggotaan cukup untuk membaca identitas kelas; akses operasional
-    // tetap mensyaratkan peserta dan kelas berstatus aktif.
     function praktikanTerkaitKelas(kelasId) {
       return participantBelongsToClass(kelasId, request.auth.uid);
     }
@@ -86,34 +78,30 @@ service cloud.firestore {
         && get(leavePath(sesiId, uid)).data.status == 'diterima';
     }
 
-    // Perubahan detail sesi tidak boleh mengubah waktu/status sesi.
     function sessionStateUnchanged() {
       return request.resource.data.status == resource.data.status
         && request.resource.data.get('openedAt', null) == resource.data.get('openedAt', null)
         && request.resource.data.get('closedAt', null) == resource.data.get('closedAt', null);
     }
 
-    // Transisi yang sah hanya belum_dibuka -> dibuka -> ditutup.
     function validSessionStateTransition() {
       return (
-          resource.data.status == 'belum_dibuka'
+        resource.data.status == 'belum_dibuka'
         && resource.data.get('aktif', true) != false
-          && request.resource.data.status == 'dibuka'
-          && request.resource.data.openedAt == request.time
-          && request.resource.data.get('closedAt', null) == resource.data.get('closedAt', null)
-          && request.resource.data.get('aktif', true) == resource.data.get('aktif', true)
-        )
-        || (
-          resource.data.status == 'dibuka'
-          && resource.data.get('aktif', true) != false
-          && request.resource.data.status == 'ditutup'
-          && request.resource.data.closedAt == request.time
-          && request.resource.data.get('openedAt', null) == resource.data.get('openedAt', null)
-          && request.resource.data.get('aktif', true) == resource.data.get('aktif', true)
-        );
+        && request.resource.data.status == 'dibuka'
+        && request.resource.data.openedAt == request.time
+        && request.resource.data.get('closedAt', null) == resource.data.get('closedAt', null)
+        && request.resource.data.get('aktif', true) == resource.data.get('aktif', true)
+      ) || (
+        resource.data.status == 'dibuka'
+        && resource.data.get('aktif', true) != false
+        && request.resource.data.status == 'ditutup'
+        && request.resource.data.closedAt == request.time
+        && request.resource.data.get('openedAt', null) == resource.data.get('openedAt', null)
+        && request.resource.data.get('aktif', true) == resource.data.get('aktif', true)
+      );
     }
 
-    // Sesi hanya boleh dinonaktifkan sebelum dibuka; dokumen tidak dihapus.
     function validSessionArchive() {
       return resource.data.status == 'belum_dibuka'
         && request.resource.data.status == 'belum_dibuka'
@@ -124,8 +112,44 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['aktif']);
     }
 
-    // ---------- users ----------
-    // Pengguna hanya dapat membaca profil sendiri; asisten dapat membaca profil praktikan.
+    function isNumber(value) {
+      return value is int || value is float;
+    }
+
+    function validLaboratorium(data) {
+      return data.keys().hasAll([
+          'nama', 'deskripsi', 'lat', 'lng', 'cosLat',
+          'radiusMeter', 'aktif', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'nama', 'deskripsi', 'lat', 'lng', 'cosLat',
+          'radiusMeter', 'aktif', 'createdAt', 'updatedAt'
+        ])
+        && data.nama is string
+        && data.nama.size() > 0
+        && data.deskripsi is string
+        && isNumber(data.lat)
+        && data.lat >= -90
+        && data.lat <= 90
+        && isNumber(data.lng)
+        && data.lng >= -180
+        && data.lng <= 180
+        && isNumber(data.cosLat)
+        && isNumber(data.radiusMeter)
+        && data.radiusMeter > 0
+        && data.aktif is bool;
+    }
+
+    function validPerangkat(data, tokenFcm) {
+      return data.keys().hasAll(['tokenFcm', 'platform', 'updatedAt'])
+        && data.keys().hasOnly(['tokenFcm', 'platform', 'updatedAt'])
+        && data.tokenFcm == tokenFcm
+        && data.tokenFcm is string
+        && data.tokenFcm.size() > 0
+        && data.platform in ['android', 'ios']
+        && data.updatedAt == request.time;
+    }
+
     match /users/{userId} {
       allow read: if signedIn()
         && (
@@ -147,10 +171,32 @@ service cloud.firestore {
         && (!('nim' in request.resource.data) || request.resource.data.nim is string);
 
       allow update, delete: if false;
+
+      match /perangkat/{tokenFcm} {
+        allow read: if signedIn() && request.auth.uid == userId;
+
+        allow create, update: if signedIn()
+          && request.auth.uid == userId
+          && validPerangkat(request.resource.data, tokenFcm);
+
+        allow delete: if signedIn() && request.auth.uid == userId;
+      }
+
+      match /notifikasi/{notifikasiId} {
+        allow read: if signedIn() && request.auth.uid == userId;
+
+        // Dokumen notifikasi dibuat oleh Cloud Functions.
+        allow create, delete: if false;
+
+        // Pengguna hanya dapat menandai notifikasi sebagai sudah dibaca.
+        allow update: if signedIn()
+          && request.auth.uid == userId
+          && resource.data.dibaca == false
+          && request.resource.data.dibaca == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dibaca']);
+      }
     }
 
-    // ---------- praktikum ----------
-    // Perubahan data praktikum dibatasi untuk asisten; hard-delete ditolak.
     match /praktikum/{praktikumId} {
       allow read: if isAsisten()
         || (
@@ -186,12 +232,9 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ---------- kelas dan peserta ----------
     match /kelas/{kelasId} {
-      allow read: if isAsisten()
-        || praktikanTerkaitKelas(kelasId);
+      allow read: if isAsisten() || praktikanTerkaitKelas(kelasId);
 
-      // Saat membuat kelas, asisten pembuat harus menjadi satu-satunya asisten awal.
       allow create: if isAsisten()
         && request.resource.data.keys().hasAll([
           'praktikumId', 'nama', 'asistenUids', 'praktikanUids',
@@ -231,8 +274,8 @@ service cloud.firestore {
           || assistantOwnsClass(kelasId);
 
         allow create: if assistantOwnsClass(kelasId)
-            && exists(/databases/$(database)/documents/users/$(uid))
-            && get(/databases/$(database)/documents/users/$(uid)).data.role == 'praktikan'
+          && exists(/databases/$(database)/documents/users/$(uid))
+          && get(/databases/$(database)/documents/users/$(uid)).data.role == 'praktikan'
           && request.resource.data.keys().hasAll(['uid', 'nama', 'aktif', 'joinedAt'])
           && request.resource.data.keys().hasOnly(['uid', 'nama', 'nim', 'aktif', 'joinedAt'])
           && request.resource.data.uid == uid
@@ -250,13 +293,11 @@ service cloud.firestore {
       }
     }
 
-    // Collection-group query untuk menemukan kelas dari dokumen keanggotaan sendiri.
     match /{path=**}/peserta/{uid} {
       allow get, list: if isPraktikan()
         && resource.data.uid == request.auth.uid;
     }
 
-    // ---------- jadwal ----------
     match /jadwal/{jadwalId} {
       allow read: if isAsisten()
         || (isPraktikan() && activeParticipant(resource.data.kelasId, request.auth.uid));
@@ -295,7 +336,6 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ---------- sesi ----------
     match /sesi/{sesiId} {
       allow read: if isAsisten()
         || (isPraktikan() && activeParticipant(resource.data.kelasId, request.auth.uid));
@@ -315,8 +355,6 @@ service cloud.firestore {
         && request.resource.data.closedAt == null
         && request.resource.data.get('aktif', true) == true;
 
-      // Perubahan sesi harus tetap di kelas milik asisten dan mengikuti
-      // transisi status yang sah atau pengarsipan sebelum sesi dibuka.
       allow update: if assistantOwnsClass(resource.data.kelasId)
         && assistantOwnsClass(request.resource.data.kelasId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -340,9 +378,6 @@ service cloud.firestore {
 
       allow delete: if false;
 
-      // ---------- presensi ----------
-      // Presensi hanya sekali, oleh praktikan sendiri, saat sesi dibuka,
-      // dengan kode 4 digit yang sama dengan kode milik sesi.
       match /presensi/{uid} {
         allow read: if (isPraktikan() && request.auth.uid == uid)
           || assistantOwnsClass(get(sessionPath(sesiId)).data.kelasId);
@@ -364,7 +399,6 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
-      // ---------- pengajuan izin ----------
       match /pengajuanIzin/{uid} {
         allow read: if (isPraktikan() && request.auth.uid == uid)
           || assistantOwnsClass(get(sessionPath(sesiId)).data.kelasId);
@@ -409,7 +443,6 @@ service cloud.firestore {
       }
     }
 
-    // ---------- kode presensi (khusus asisten kelas) ----------
     match /kodePresensi/{sesiId} {
       allow read: if assistantOwnsClass(get(sessionPath(sesiId)).data.kelasId);
 
@@ -425,7 +458,27 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ---------- semua dokumen lain ditolak ----------
+    match /laboratorium/{laboratoriumId} {
+      allow read: if isAsisten()
+        || (signedIn() && resource.data.aktif == true);
+
+      allow create: if isAsisten()
+        && validLaboratorium(request.resource.data)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if isAsisten()
+        && validLaboratorium(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'nama', 'deskripsi', 'lat', 'lng', 'cosLat',
+          'radiusMeter', 'aktif', 'updatedAt'
+        ]);
+
+      allow delete: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
