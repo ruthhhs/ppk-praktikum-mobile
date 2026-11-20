@@ -24,6 +24,7 @@ export interface PraktikumDoc {
 // kelas/{kelasId}
 export interface KelasDoc {
   praktikumId: string;
+  labId?: string;
   nama: string;
   asistenUids: string[];
   praktikanUids: string[];

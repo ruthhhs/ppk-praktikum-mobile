@@ -19,7 +19,9 @@ import type {
   PraktikumDoc,
   SesiDoc,
 } from "../../data/firestoreType";
+import { LABORATORIUM_TETAP } from "../../data/lokasi";
 import { useAuth } from "../../hooks/useAuth";
+import PraktikanPicker from "../../components/asisten/PraktikanPicker";
 import {
   addDocument,
   firestoreRefs,
@@ -31,14 +33,13 @@ import {
   setDocument,
   updateDocument,
 } from "../../services/firebase/firestore";
-import PraktikanPicker from "../../components/asisten/PraktikanPicker";
 import { useDaftarPraktikan } from "./useDaftarPraktikan";
 
 type DataKind = "praktikum" | "kelas" | "peserta" | "jadwal";
 type RecordItem = { id: string; aktif: boolean };
 type PraktikumData = RecordItem & Pick<PraktikumDoc, "nama" | "deskripsi">;
 type KelasData = RecordItem &
-  Pick<KelasDoc, "nama" | "praktikumId" | "asistenUids">;
+  Pick<KelasDoc, "nama" | "praktikumId" | "labId" | "asistenUids">;
 type PesertaData = RecordItem & Pick<PesertaDoc, "uid"> & { kelasId: string };
 type JadwalData = RecordItem & Omit<JadwalDoc, "aktif">;
 type SesiData = SesiDoc & { id: string };
@@ -47,6 +48,7 @@ type Draft = {
   nama: string;
   deskripsi: string;
   praktikumId: string;
+  labId: string;
   kelasId: string;
   uid: string;
   pertemuanKe: string;
@@ -73,6 +75,7 @@ const emptyDraft: Draft = {
   nama: "",
   deskripsi: "",
   praktikumId: "",
+  labId: "",
   kelasId: "",
   uid: "",
   pertemuanKe: "",
@@ -212,7 +215,11 @@ function RecordCard({
       </View>
       <View style={styles.cardActions}>
         {onEdit ? (
-          <Pressable accessibilityRole="button" onPress={onEdit} style={styles.actionButton}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onEdit}
+            style={styles.actionButton}
+          >
             <Text style={styles.actionText}>Ubah</Text>
           </Pressable>
         ) : null}
@@ -390,7 +397,7 @@ export default function AsistenKelolaDataScreen() {
     if (kind === "peserta")
       return peserta.filter((item) => {
         const profil = petaByUid.get(item.uid);
-        const namaKelas = kelas.find((e) => e.id === item.kelasId)?.nama ?? "";
+        const namaKelas = kelas.find((entry) => entry.id === item.kelasId)?.nama ?? "";
         return `${profil?.nama ?? ""} ${profil?.nim ?? ""} ${item.uid} ${namaKelas}`
           .toLocaleLowerCase("id-ID")
           .includes(query);
@@ -424,6 +431,7 @@ export default function AsistenKelolaDataScreen() {
         nama: item?.nama ?? "",
         praktikumId:
           item?.praktikumId ?? praktikum.find((entry) => entry.aktif)?.id ?? "",
+        labId: item?.labId ?? "",
       });
     } else if (nextKind === "peserta") {
       const item = peserta.find((entry) => entry.id === id);
@@ -469,10 +477,11 @@ export default function AsistenKelolaDataScreen() {
             createdAt: serverTimestamp(),
           });
       } else if (formKind === "kelas") {
-        if (!draft.nama.trim() || !draft.praktikumId)
-          throw new Error("Nama kelas dan praktikum wajib diisi.");
+        if (!draft.nama.trim() || !draft.praktikumId || !draft.labId)
+          throw new Error("Nama kelas, praktikum, dan laboratorium wajib dipilih.");
         const value = {
           praktikumId: draft.praktikumId,
+          labId: draft.labId,
           nama: draft.nama.trim(),
           asistenUids: [user?.uid ?? ""],
           aktif: true,
@@ -699,7 +708,13 @@ export default function AsistenKelolaDataScreen() {
           <RecordCard
             key={item.id}
             title={`Kelas ${item.nama}`}
-            detail={`Praktikum ${praktikum.find((course) => course.id === item.praktikumId)?.nama } · · ${item.asistenUids.length} Asisten`}
+            detail={`Praktikum ${
+              praktikum.find((course) => course.id === item.praktikumId)?.nama ??
+              "Praktikum"
+            } · ${
+              LABORATORIUM_TETAP.find((lab) => lab.id === item.labId)?.nama ??
+              "Lab belum dipilih"
+            } · ${item.asistenUids.length} Asisten`}
             aktif={item.aktif}
             onEdit={() => openForm("kelas", item.id)}
             onArchive={() => prepareArchive("kelas", item.id, item.aktif)}
@@ -732,7 +747,9 @@ export default function AsistenKelolaDataScreen() {
         <RecordCard
           key={item.id}
           title={`Pertemuan ${item.pertemuanKe} · ${item.tanggal}`}
-          detail={`Kelas ${ kelas.find((entry) => entry.id === item.kelasId)?.nama} · ${item.jamMulai}–${item.jamSelesai} · ${item.lokasi}`}
+          detail={`Kelas ${
+            kelas.find((entry) => entry.id === item.kelasId)?.nama
+          } · ${item.jamMulai}–${item.jamSelesai} · ${item.lokasi}`}
           aktif={item.aktif}
           onEdit={() => openForm("jadwal", item.id)}
           onArchive={() => prepareArchive("jadwal", item.id, item.aktif)}
@@ -776,28 +793,37 @@ export default function AsistenKelolaDataScreen() {
             selectedId={draft.praktikumId}
             onSelect={(value) => updateDraft("praktikumId", value)}
           />
+          <ChoiceChips
+            label="Laboratorium"
+            choices={LABORATORIUM_TETAP.map((lab) => ({
+              id: lab.id,
+              label: lab.nama,
+            }))}
+            selectedId={draft.labId}
+            onSelect={(value) => updateDraft("labId", value)}
+          />
         </>
       );
-      if (formKind === "peserta")
-        return (
-          <>
-            <ChoiceChips
-              label="Kelas"
-              choices={classChoices}
-              selectedId={draft.kelasId}
-              onSelect={(value) => updateDraft("kelasId", value)}
-            />
-            <PraktikanPicker
-              daftar={daftarPraktikan}
-              terdaftar={terdaftarDiKelas}
-              selectedUid={draft.uid}
-              onSelect={(uid) => updateDraft("uid", uid)}
-              loading={loadingPraktikan}
-              error={errorPraktikan}
-              onRetry={muatPraktikan}
-            />
-          </>
-        );
+    if (formKind === "peserta")
+      return (
+        <>
+          <ChoiceChips
+            label="Kelas"
+            choices={classChoices}
+            selectedId={draft.kelasId}
+            onSelect={(value) => updateDraft("kelasId", value)}
+          />
+          <PraktikanPicker
+            daftar={daftarPraktikan}
+            terdaftar={terdaftarDiKelas}
+            selectedUid={draft.uid}
+            onSelect={(uid) => updateDraft("uid", uid)}
+            loading={loadingPraktikan}
+            error={errorPraktikan}
+            onRetry={muatPraktikan}
+          />
+        </>
+      );
     return (
       <>
         <ChoiceChips
@@ -1001,6 +1027,7 @@ export default function AsistenKelolaDataScreen() {
           </View>
         </View>
       </Modal>
+
       <Modal
         visible={!!pendingAction}
         transparent
