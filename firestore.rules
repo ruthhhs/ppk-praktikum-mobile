@@ -6,16 +6,8 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isAsisten() {
-      return signedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'asisten';
-    }
-
-    function isPraktikan() {
-      return signedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'praktikan';
+    function userPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
     }
 
     function classPath(kelasId) {
@@ -42,35 +34,44 @@ service cloud.firestore {
       return /databases/$(database)/documents/kodePresensi/$(sesiId);
     }
 
+    function laboratoryPath(laboratoriumId) {
+      return /databases/$(database)/documents/laboratorium/$(laboratoriumId);
+    }
+
+    function isAsisten() {
+      return signedIn()
+        && get(userPath(request.auth.uid)).data.role == 'asisten';
+    }
+
+    function isPraktikan() {
+      return signedIn()
+        && get(userPath(request.auth.uid)).data.role == 'praktikan';
+    }
+
     function assistantOwnsClass(kelasId) {
+      let kelas = get(classPath(kelasId)).data;
       return isAsisten()
-        && exists(classPath(kelasId))
-        && get(classPath(kelasId)).data.asistenUids is list
-        && request.auth.uid in get(classPath(kelasId)).data.asistenUids;
+        && kelas.asistenUids is list
+        && request.auth.uid in kelas.asistenUids;
     }
 
     function activeParticipant(kelasId, uid) {
+      let kelas = get(classPath(kelasId)).data;
+      let peserta = get(participantPath(kelasId, uid)).data;
       return isPraktikan()
-        && exists(classPath(kelasId))
-        && get(classPath(kelasId)).data.aktif != false
-        && exists(participantPath(kelasId, uid))
-        && get(participantPath(kelasId, uid)).data.aktif == true;
+        && kelas.get('aktif', true) != false
+        && peserta.get('aktif', false) == true
+        && peserta.get('uid', '') == uid;
     }
 
     function participantBelongsToClass(kelasId, uid) {
+      let peserta = get(participantPath(kelasId, uid)).data;
       return isPraktikan()
-        && exists(classPath(kelasId))
-        && exists(participantPath(kelasId, uid))
-        && get(participantPath(kelasId, uid)).data.uid == uid;
+        && peserta.get('uid', '') == uid;
     }
 
     function praktikanTerkaitKelas(kelasId) {
       return participantBelongsToClass(kelasId, request.auth.uid);
-    }
-
-    function sessionIsOpen(sesiId) {
-      return exists(sessionPath(sesiId))
-        && get(sessionPath(sesiId)).data.status == 'dibuka';
     }
 
     function leaveAlreadyAccepted(sesiId, uid) {
@@ -135,9 +136,66 @@ service cloud.firestore {
         && data.lng >= -180
         && data.lng <= 180
         && isNumber(data.cosLat)
+        && data.cosLat >= -1
+        && data.cosLat <= 1
         && isNumber(data.radiusMeter)
         && data.radiusMeter > 0
         && data.aktif is bool;
+    }
+
+    function kelasMemilikiLaboratoriumAktif(kelasId) {
+      let kelas = get(classPath(kelasId)).data;
+      let laboratoriumId = kelas.get('labId', '');
+      let laboratorium = get(laboratoryPath(laboratoriumId)).data;
+      return laboratoriumId is string
+        && laboratoriumId.size() > 0
+        && laboratorium.aktif == true;
+    }
+
+    function lokasiDalamRadius(laboratorium) {
+      let selisihLatMeter =
+        (request.resource.data.lat - laboratorium.lat) * 110540;
+      let selisihLngMeter =
+        (request.resource.data.lng - laboratorium.lng) * 111320 * laboratorium.cosLat;
+      return (
+        selisihLatMeter * selisihLatMeter
+        + selisihLngMeter * selisihLngMeter
+      ) <= (
+        laboratorium.radiusMeter * laboratorium.radiusMeter
+      );
+    }
+
+    function validPresensiDenganLokasi(sesiId, uid) {
+      let sesi = get(sessionPath(sesiId)).data;
+      let kelas = get(classPath(sesi.kelasId)).data;
+      let peserta = get(participantPath(sesi.kelasId, uid)).data;
+      let laboratoriumId = kelas.get('labId', '');
+      let laboratorium = get(laboratoryPath(laboratoriumId)).data;
+
+      return isPraktikan()
+        && request.auth.uid == uid
+        && sesi.status == 'dibuka'
+        && kelas.get('aktif', true) != false
+        && peserta.get('aktif', false) == true
+        && peserta.get('uid', '') == uid
+        && exists(attendanceCodePath(sesiId))
+        && request.resource.data.kode == get(attendanceCodePath(sesiId)).data.kode
+        && laboratoriumId is string
+        && laboratoriumId.size() > 0
+        && laboratorium.aktif == true
+        && request.resource.data.labId == laboratoriumId
+        && isNumber(request.resource.data.lat)
+        && request.resource.data.lat >= -90
+        && request.resource.data.lat <= 90
+        && isNumber(request.resource.data.lng)
+        && request.resource.data.lng >= -180
+        && request.resource.data.lng <= 180
+        && isNumber(request.resource.data.akurasi)
+        && request.resource.data.akurasi >= 0
+        && request.resource.data.akurasi <= 50
+        && request.resource.data.mocked == false
+        && lokasiDalamRadius(laboratorium)
+        && !leaveAlreadyAccepted(sesiId, uid);
     }
 
     function validPerangkat(data, tokenFcm) {
@@ -184,11 +242,8 @@ service cloud.firestore {
 
       match /notifikasi/{notifikasiId} {
         allow read: if signedIn() && request.auth.uid == userId;
-
-        // Dokumen notifikasi dibuat oleh Cloud Functions.
         allow create, delete: if false;
 
-        // Pengguna hanya dapat menandai notifikasi sebagai sudah dibaca.
         allow update: if signedIn()
           && request.auth.uid == userId
           && resource.data.dibaca == false
@@ -237,15 +292,17 @@ service cloud.firestore {
 
       allow create: if isAsisten()
         && request.resource.data.keys().hasAll([
-          'praktikumId', 'nama', 'asistenUids', 'praktikanUids',
+          'praktikumId', 'nama', 'labId', 'asistenUids', 'praktikanUids',
           'aktif', 'createdAt', 'updatedAt'
         ])
         && request.resource.data.keys().hasOnly([
-          'praktikumId', 'nama', 'asistenUids', 'praktikanUids',
+          'praktikumId', 'nama', 'labId', 'asistenUids', 'praktikanUids',
           'aktif', 'createdAt', 'updatedAt'
         ])
         && request.resource.data.praktikumId is string
         && request.resource.data.nama is string
+        && request.resource.data.labId is string
+        && get(laboratoryPath(request.resource.data.labId)).data.aktif == true
         && request.resource.data.asistenUids is list
         && request.resource.data.asistenUids.size() == 1
         && request.auth.uid in request.resource.data.asistenUids
@@ -256,13 +313,15 @@ service cloud.firestore {
 
       allow update: if assistantOwnsClass(kelasId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'praktikumId', 'nama', 'asistenUids', 'praktikanUids',
+          'praktikumId', 'nama', 'labId', 'asistenUids', 'praktikanUids',
           'aktif', 'updatedAt'
         ])
         && request.resource.data.asistenUids == resource.data.asistenUids
         && request.auth.uid in request.resource.data.asistenUids
         && request.resource.data.praktikumId is string
         && request.resource.data.nama is string
+        && request.resource.data.labId is string
+        && get(laboratoryPath(request.resource.data.labId)).data.aktif == true
         && request.resource.data.praktikanUids is list
         && request.resource.data.aktif is bool
         && request.resource.data.updatedAt == request.time;
@@ -274,8 +333,7 @@ service cloud.firestore {
           || assistantOwnsClass(kelasId);
 
         allow create: if assistantOwnsClass(kelasId)
-          && exists(/databases/$(database)/documents/users/$(uid))
-          && get(/databases/$(database)/documents/users/$(uid)).data.role == 'praktikan'
+          && get(userPath(uid)).data.role == 'praktikan'
           && request.resource.data.keys().hasAll(['uid', 'nama', 'aktif', 'joinedAt'])
           && request.resource.data.keys().hasOnly(['uid', 'nama', 'nim', 'aktif', 'joinedAt'])
           && request.resource.data.uid == uid
@@ -341,6 +399,7 @@ service cloud.firestore {
         || (isPraktikan() && activeParticipant(resource.data.kelasId, request.auth.uid));
 
       allow create: if assistantOwnsClass(request.resource.data.kelasId)
+        && kelasMemilikiLaboratoriumAktif(request.resource.data.kelasId)
         && request.resource.data.keys().hasAll([
           'jadwalId', 'kelasId', 'status', 'catatan', 'openedAt', 'closedAt'
         ])
@@ -382,21 +441,19 @@ service cloud.firestore {
         allow read: if (isPraktikan() && request.auth.uid == uid)
           || assistantOwnsClass(get(sessionPath(sesiId)).data.kelasId);
 
-        allow create: if isPraktikan()
-          && request.auth.uid == uid
-          && request.resource.data.keys().hasAll(['userId', 'recordedAt', 'kode'])
-          && request.resource.data.keys().hasOnly(['userId', 'recordedAt', 'kode'])
+        allow create: if request.resource.data.keys().hasAll([
+            'userId', 'recordedAt', 'kode',
+            'labId', 'lat', 'lng', 'akurasi', 'mocked'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'userId', 'recordedAt', 'kode',
+            'labId', 'lat', 'lng', 'akurasi', 'mocked'
+          ])
           && request.resource.data.userId == uid
           && request.resource.data.recordedAt == request.time
           && request.resource.data.kode is string
           && request.resource.data.kode.matches('^[0-9]{4}$')
-          && sessionIsOpen(sesiId)
-          && activeParticipant(get(sessionPath(sesiId)).data.kelasId, uid)
-          && exists(attendanceCodePath(sesiId))
-          && request.resource.data.kode == get(attendanceCodePath(sesiId)).data.kode
-          && !leaveAlreadyAccepted(sesiId, uid);
-
-        allow update, delete: if false;
+          && validPresensiDenganLokasi(sesiId, uid);
       }
 
       match /pengajuanIzin/{uid} {
@@ -420,7 +477,6 @@ service cloud.firestore {
           && (!('kategoriAI' in request.resource.data) || request.resource.data.kategoriAI is string)
           && request.resource.data.status == 'menunggu'
           && request.resource.data.createdAt == request.time
-          && exists(sessionPath(sesiId))
           && get(sessionPath(sesiId)).data.status in ['belum_dibuka', 'dibuka']
           && activeParticipant(get(sessionPath(sesiId)).data.kelasId, uid)
           && !exists(attendancePath(sesiId, uid))
