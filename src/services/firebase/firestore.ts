@@ -43,6 +43,7 @@ import type {
 } from "@/data/firestoreType";
 import type { UserProfile } from "@/data/types";
 import { rnDb } from "./index";
+import { LABORATORIUM_TETAP } from '@/data/lokasi';
 
 export { serverTimestamp } from "@react-native-firebase/firestore";
 
@@ -324,6 +325,27 @@ export async function tambahLaboratorium(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+}
+
+export async function pastikanLaboratoriumTetap(): Promise<void> {
+  for (const lab of LABORATORIUM_TETAP) {
+    const reference = firestoreRefs.laboratoriumDoc(lab.id);
+    const existing = await readDocument(reference);
+
+    if (existing) continue;
+
+    await setDocument(reference, {
+      nama: lab.nama,
+      deskripsi: lab.deskripsi,
+      lat: lab.lat,
+      lng: lab.lng,
+      cosLat: Math.cos((lab.lat * Math.PI) / 180),
+      radiusMeter: lab.radiusMeter,
+      aktif: lab.aktif,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  }
 }
 
 export function perbaruiLaboratorium(

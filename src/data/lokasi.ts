@@ -48,3 +48,42 @@ export interface PerbaruiLaboratoriumInput {
   lng: number;
   radiusMeter: number;
 }
+
+export const LABORATORIUM_TETAP = [
+  {
+    id: 'lab-informatika-b',
+    nama: 'Lab Informatika B',
+    deskripsi: 'Gedung E FSM UNDIP, lantai 2',
+    lat: -7.0482375,
+    lng: 110.440765625,
+    radiusMeter: 150,
+    aktif: true,
+  },
+  {
+    id: 'lab-informatika-c',
+    nama: 'Lab Informatika C',
+    deskripsi: 'Gedung E FSM UNDIP, lantai 2',
+    lat: -7.0482375,
+    lng: 110.440765625,
+    radiusMeter: 150,
+    aktif: true,
+  },
+  {
+    id: 'lab-informatika-d',
+    nama: 'Lab Informatika D',
+    deskripsi: 'Gedung E FSM UNDIP, lantai 2',
+    lat: -7.0482375,
+    lng: 110.440765625,
+    radiusMeter: 150,
+    aktif: true,
+  },
+  {
+    id: 'dekanat-fsm',
+    nama: 'Dekanat FSM UNDIP',
+    deskripsi: 'Gedung Dekanat FSM UNDIP',
+    lat: -7.0490375,
+    lng: 110.441484375,
+    radiusMeter: 150,
+    aktif: true,
+  },
+] as const;
