@@ -15,7 +15,6 @@ import {
   listenDocument,
   readCollection,
   readDocument,
-  removeDocument,
   serverTimestamp,
   setDocument,
   updateDocument,
@@ -76,6 +75,7 @@ function getFirestoreErrorCode(error: unknown) {
 
 type RawSesiItem = SesiDoc & {
   id: string;
+  aktif?: boolean; // false = sesi diarsipkan (pengganti hapus, Rules melarang delete)
   praktikum?: string;
   namaPraktikum?: string;
   pertemuanKe?: number;
@@ -141,6 +141,61 @@ export function AsistenWorkflowStoreProvider({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // ---------------------------------------------------------------------
+  // Turunan "milik saya".
+  // Rules mengizinkan semua Asisten membaca praktikum/kelas/jadwal/sesi,
+  // tetapi subkoleksi (peserta, presensi, pengajuanIzin, kodePresensi)
+  // hanya untuk Asisten pemilik kelas. Karena itu semua listener
+  // subkoleksi dan daftar sesi di UI dibatasi ke kelas milik Asisten ini.
+  // Dependensi efek memakai key string agar listener tidak dibongkar
+  // setiap kali satu dokumen sesi berubah.
+  // ---------------------------------------------------------------------
+  const uid = profile?.uid;
+
+  const kelasSaya = useMemo(
+    () =>
+      uid
+        ? kelasList.filter(
+            (k) => Array.isArray(k.asistenUids) && k.asistenUids.includes(uid),
+          )
+        : [],
+    [kelasList, uid],
+  );
+
+  const kelasSayaIdKey = useMemo(
+    () =>
+      kelasSaya
+        .map((k) => k.id)
+        .sort()
+        .join(","),
+    [kelasSaya],
+  );
+
+  const sesiSaya = useMemo(() => {
+    const ids = new Set(kelasSaya.map((k) => k.id));
+    // aktif === false berarti sesi sudah diarsipkan (dihapus dari tampilan)
+    return rawSesi.filter((s) => ids.has(s.kelasId) && s.aktif !== false);
+  }, [rawSesi, kelasSaya]);
+
+  const sesiSayaIdKey = useMemo(
+    () =>
+      sesiSaya
+        .map((s) => s.id)
+        .sort()
+        .join(","),
+    [sesiSaya],
+  );
+
+  const sesiDibukaKey = useMemo(
+    () =>
+      sesiSaya
+        .filter((s) => s.status === "dibuka")
+        .map((s) => s.id)
+        .sort()
+        .join(","),
+    [sesiSaya],
+  );
+
   // 1. Listen to parent collections: praktikum, kelas, jadwal, sesi
   useEffect(() => {
     if (role !== "asisten" || !user) {
@@ -198,67 +253,63 @@ export function AsistenWorkflowStoreProvider({
     };
   }, [role, user]);
 
-  // 2. Listen to class participant counts
+  // 2. Listen to class participant counts (hanya kelas milik saya)
   useEffect(() => {
-    if (kelasList.length === 0) return undefined;
-
-    const unsubs = new Map<string, () => void>();
-
-    for (const kelas of kelasList) {
-      unsubs.set(
-        kelas.id,
-        listenCollection(
-          firestoreRefs.peserta(kelas.id),
-          (participants: (PesertaDoc & { id: string })[]) => {
-            const activeCount = participants.filter((p) => p.aktif !== false).length;
-            setPesertaCountMap((prev) => ({
-              ...prev,
-              [kelas.id]: activeCount,
-            }));
-          },
-          () => {},
-        ),
-      );
+    if (!kelasSayaIdKey) {
+      setPesertaCountMap({});
+      return undefined;
     }
+
+    const unsubs = kelasSayaIdKey.split(",").map((kelasId) =>
+      listenCollection(
+        firestoreRefs.peserta(kelasId),
+        (participants: (PesertaDoc & { id: string })[]) => {
+          const activeCount = participants.filter((p) => p.aktif !== false).length;
+          setPesertaCountMap((prev) => ({
+            ...prev,
+            [kelasId]: activeCount,
+          }));
+        },
+        (e) =>
+          console.warn("listener peserta", kelasId, getFirestoreErrorCode(e)),
+      ),
+    );
 
     return () => {
       unsubs.forEach((unsub) => unsub());
     };
-  }, [kelasList]);
+  }, [kelasSayaIdKey]);
 
-  // 3. Listen to subcollections (presensi, pengajuanIzin) and kodePresensi per session
+  // 3a. Subcollections presensi & pengajuanIzin (hanya sesi dari kelas milik saya)
   useEffect(() => {
-    if (rawSesi.length === 0) {
+    if (!sesiSayaIdKey) {
       setPresensiCountMap({});
       setPengajuanMap({});
-      setKodePresensiMap({});
       return undefined;
     }
 
-    const unsubs = new Map<string, () => void>();
-    const sessionIds = new Set(rawSesi.map((s) => s.id));
+    const unsubs: (() => void)[] = [];
 
-    for (const s of rawSesi) {
+    for (const sesiId of sesiSayaIdKey.split(",")) {
       // Subcollection: presensi
-      unsubs.set(
-        `presensi-${s.id}`,
+      unsubs.push(
         listenCollection(
-          firestoreRefs.presensi(s.id),
+          firestoreRefs.presensi(sesiId),
           (attendees) => {
             setPresensiCountMap((prev) => ({
               ...prev,
-              [s.id]: attendees.length,
+              [sesiId]: attendees.length,
             }));
           },
-          () => {},
+          (e) =>
+            console.warn("listener presensi", sesiId, getFirestoreErrorCode(e)),
         ),
       );
 
       // Subcollection: pengajuanIzin
-      unsubs.set(
-        `izin-${s.id}`,
+      unsubs.push(
         listenCollection(
-          firestoreRefs.pengajuanIzin(s.id),
+          firestoreRefs.pengajuanIzin(sesiId),
           async (reqs) => {
             // Enrich with user profile if missing
             const enriched: PengajuanIzin[] = [];
@@ -323,8 +374,8 @@ export function AsistenWorkflowStoreProvider({
               }
 
               enriched.push({
-                id: `${s.id}_${praktikanId}`,
-                sesiId: s.id,
+                id: `${sesiId}_${praktikanId}`,
+                sesiId,
                 praktikanId,
                 nama: nama || "Praktikan",
                 nim: nim || "NIM tidak tersedia",
@@ -340,46 +391,52 @@ export function AsistenWorkflowStoreProvider({
 
             setPengajuanMap((prev) => ({
               ...prev,
-              [s.id]: enriched,
+              [sesiId]: enriched,
             }));
           },
-          () => {},
+          (e) =>
+            console.warn("listener izin", sesiId, getFirestoreErrorCode(e)),
         ),
       );
-
-      // If session is open, listen to kodePresensi
-      if (s.status === "dibuka") {
-        unsubs.set(
-          `kode-${s.id}`,
-          listenDocument(
-            firestoreRefs.kodePresensi(s.id),
-            (kodeDoc: any) => {
-              if (kodeDoc?.kode) {
-                setKodePresensiMap((prev) => ({
-                  ...prev,
-                  [s.id]: kodeDoc.kode,
-                }));
-              }
-            },
-            () => {},
-          ),
-        );
-      }
     }
 
     return () => {
       unsubs.forEach((unsub) => unsub());
     };
-  }, [rawSesi]);
+  }, [sesiSayaIdKey]);
 
-  // 4. Construct SesiAsisten list
+  // 3b. kodePresensi hanya untuk sesi milik saya yang sedang dibuka.
+  // Dipisah agar membuka/menutup satu sesi tidak membongkar listener presensi & izin.
+  useEffect(() => {
+    if (!sesiDibukaKey) return undefined;
+
+    const unsubs = sesiDibukaKey.split(",").map((sesiId) =>
+      listenDocument(
+        firestoreRefs.kodePresensi(sesiId),
+        (kodeDoc: any) => {
+          if (kodeDoc?.kode) {
+            setKodePresensiMap((prev) => ({
+              ...prev,
+              [sesiId]: kodeDoc.kode,
+            }));
+          }
+        },
+        (e) => console.warn("listener kode", sesiId, getFirestoreErrorCode(e)),
+      ),
+    );
+
+    return () => {
+      unsubs.forEach((unsub) => unsub());
+    };
+  }, [sesiDibukaKey]);
+
+  // 4. Construct SesiAsisten list (hanya sesi kelas milik saya)
   const sesi = useMemo<SesiAsisten[]>(() => {
-    return rawSesi.map((item) => {
+    return sesiSaya.map((item) => {
       const jadwal = jadwalList.find((j) => j.id === item.jadwalId);
       const kelasId = item.kelasId || jadwal?.kelasId || "";
       const kelas = kelasList.find((k) => k.id === kelasId);
-      const praktikumId =
-        item.praktikumId || kelas?.praktikumId || "";
+      const praktikumId = item.praktikumId || kelas?.praktikumId || "";
       const praktikum = praktikumList.find((p) => p.id === praktikumId);
 
       const resolvedPraktikum =
@@ -424,7 +481,7 @@ export function AsistenWorkflowStoreProvider({
       };
     });
   }, [
-    rawSesi,
+    sesiSaya,
     jadwalList,
     kelasList,
     praktikumList,
@@ -433,7 +490,7 @@ export function AsistenWorkflowStoreProvider({
     kodePresensiMap,
   ]);
 
-  // 5. Construct Pengajuan list across all sessions
+  // 5. Construct Pengajuan list across my sessions
   const pengajuan = useMemo<PengajuanIzin[]>(() => {
     const all = Object.values(pengajuanMap).flat();
     return all.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -462,23 +519,29 @@ export function AsistenWorkflowStoreProvider({
       };
     }
 
-    // Match with existing class, schedule, course
-    const matchingKelas = kelasList.find(
+    // Kelas dicari hanya dari kelas yang dikelola Asisten ini (Rules: assistantOwnsClass)
+    const matchingKelas = kelasSaya.find(
       (k) => k.nama.trim().toLowerCase() === draft.kelas.trim().toLowerCase(),
     );
+    if (!matchingKelas) {
+      return {
+        success: false,
+        message: "Kelas tidak ditemukan di kelas yang Anda kelola.",
+      };
+    }
+
     const matchingPraktikum = praktikumList.find(
       (p) =>
         p.nama.trim().toLowerCase() === draft.praktikum.trim().toLowerCase(),
     );
     const matchingJadwal = jadwalList.find(
       (j) =>
-        (matchingKelas ? j.kelasId === matchingKelas.id : true) &&
-        j.pertemuanKe === draft.pertemuanKe,
+        j.kelasId === matchingKelas.id && j.pertemuanKe === draft.pertemuanKe,
     );
 
     const payload = {
       jadwalId: matchingJadwal?.id || draft.jadwalId || "",
-      kelasId: matchingKelas?.id || draft.kelasId || "",
+      kelasId: matchingKelas.id,
       praktikumId: matchingPraktikum?.id || draft.praktikumId || "",
       praktikum: draft.praktikum.trim(),
       pertemuanKe: draft.pertemuanKe,
@@ -511,6 +574,7 @@ export function AsistenWorkflowStoreProvider({
     }
   }
 
+  // "Hapus" = arsipkan (aktif:false). Rules melarang delete pada sesi dan kodePresensi.
   async function hapusSesi(id: string): Promise<Result> {
     const authError = requireAssistant();
     if (authError) return authError;
@@ -544,8 +608,8 @@ export function AsistenWorkflowStoreProvider({
         };
       }
 
-      await removeDocument(firestoreRefs.sesiDoc(id));
-      await removeDocument(firestoreRefs.kodePresensi(id)).catch(() => {});
+      // Hanya field `aktif` yang boleh berubah (validSessionArchive di Rules)
+      await updateDocument(firestoreRefs.sesiDoc(id), { aktif: false } as any);
 
       return { success: true, message: "Sesi berhasil dihapus." };
     } catch (error) {
