@@ -1,5 +1,5 @@
-import TempScreen from "../../screens/TempScreen";
+import NotifikasiScreen from '@/screens/NotifikasiScreen';
 
 export default function PraktikanNotifikasiRoute() {
-  return <TempScreen title="Notifikasi Praktikan" />;
+  return <NotifikasiScreen />;
 }
