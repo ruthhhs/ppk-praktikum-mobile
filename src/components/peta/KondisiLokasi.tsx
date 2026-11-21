@@ -48,8 +48,17 @@ export default function KondisiLokasi({
       break;
     case 'menunggu_koordinat':
       judul = 'Menunggu koordinat';
-      pesan = 'Sinyal GPS sedang dicari. Posisimu akan tampil begitu koordinat tersedia.';
+      pesan =
+        'Sinyal GPS sedang dicari. Posisimu akan tampil begitu koordinat tersedia.';
       sedangMenunggu = true;
+
+      if (onMintaIzin) {
+        aksi.push({
+          title: 'Aktifkan lokasi',
+          variant: 'primary',
+          onPress: onMintaIzin,
+        });
+      }
       break;
     case 'izin_ditolak':
       nada = 'peringatan';

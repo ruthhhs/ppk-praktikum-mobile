@@ -1,5 +1,5 @@
-import TempScreen from "../../screens/TempScreen";
+import PetaScreen from "../../screens/peta/PetaScreen";
 
 export default function AsistenPetaRoute() {
-  return <TempScreen title="Peta Laboratorium Asisten" />;
+  return <PetaScreen peran="asisten" />;
 }
