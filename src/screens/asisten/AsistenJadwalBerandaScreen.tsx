@@ -1,6 +1,8 @@
 import { router } from "expo-router";
+import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,131 +16,325 @@ import {
   type SesiAsisten,
 } from "./AsistenWorkflowStore";
 
-function formatTanggal(tanggal: string) {
+type StatusSesi = SesiAsisten["status"];
+type FilterSesi = "semua" | StatusSesi;
+type Sesi = SesiAsisten;
+
+const WARNA = { ...colors, soft: "#F5F8F6" };
+
+const LABEL_STATUS: Record<StatusSesi, string> = {
+  belum_dibuka: "Belum dibuka",
+  dibuka: "Dibuka",
+  ditutup: "Ditutup",
+};
+
+const LABEL_FILTER: Record<FilterSesi, string> = {
+  semua: "Semua",
+  dibuka: "Dibuka",
+  belum_dibuka: "Belum dibuka",
+  ditutup: "Ditutup",
+};
+
+function formatTanggal(tanggal?: string) {
+  if (!tanggal || !tanggal.includes("-")) return tanggal || "-";
   const [tahun, bulan, hari] = tanggal.split("-").map(Number);
+  const date = new Date(tahun, bulan - 1, hari);
 
-  if (!tahun || !bulan || !hari) return tanggal;
-
-  return new Date(tahun, bulan - 1, hari).toLocaleDateString("id-ID", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  return date
+    .toLocaleDateString("id-ID", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    })
+    .replace(".", "");
 }
 
-function teksStatus(status: SesiAsisten["status"]) {
-  switch (status) {
-    case "dibuka":
-      return "Sedang dibuka";
-    case "ditutup":
-      return "Ditutup";
-    default:
-      return "Belum dibuka";
-  }
+function StatusBadge({ status }: { status: StatusSesi }) {
+  return (
+    <View style={[styles.statusBadge, styles[`status_${status}`]]}>
+      {status === "dibuka" && <View style={styles.statusDot} />}
+      <Text style={[styles.statusText, styles[`statusText_${status}`]]}>
+        {LABEL_STATUS[status]}
+      </Text>
+    </View>
+  );
 }
 
-function bukaDetailSesi(sesiId: string) {
-  router.push({
-    pathname: "/asisten/detail-sesi",
-    params: { sesiId },
-  });
+function FilterButton({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.filterButton,
+        selected && styles.filterButtonSelected,
+        pressed && styles.pressed,
+      ]}
+    >
+      <Text style={[styles.filterText, selected && styles.filterTextSelected]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function SessionCard({ sesi }: { sesi: Sesi }) {
+  const persentase =
+    sesi.total > 0 ? Math.round((sesi.hadir / sesi.total) * 100) : 0;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Buka detail ${sesi.praktikum}, pertemuan ${sesi.pertemuanKe}`}
+      onPress={() =>
+        router.push({
+          pathname: "/asisten/detail-sesi",
+          params: { sesiId: sesi.id },
+        })
+      }
+      style={({ pressed }) => [
+        styles.sessionCard,
+        pressed && styles.sessionCardPressed,
+      ]}
+    >
+      <View style={styles.cardTopRow}>
+        <Text style={styles.cardEyebrow}>SESI PRAKTIKUM</Text>
+        <StatusBadge status={sesi.status} />
+      </View>
+
+      <Text style={styles.courseName}>{sesi.praktikum}</Text>
+      <Text style={styles.sessionMeta}>
+        Pertemuan {sesi.pertemuanKe}
+        <Text style={styles.metaSeparator}> · </Text>
+        Kelas {sesi.kelas}
+      </Text>
+
+      <View style={styles.infoDivider} />
+
+      <View style={styles.infoGrid}>
+        <View style={styles.infoBlock}>
+          <Text style={styles.infoLabel}>WAKTU</Text>
+          <Text style={styles.infoValue}>{formatTanggal(sesi.tanggal)}</Text>
+          <Text style={styles.infoSubValue}>
+            {sesi.jamMulai}–{sesi.jamSelesai}
+          </Text>
+        </View>
+
+        <View style={styles.infoBlock}>
+          <Text style={styles.infoLabel}>LOKASI</Text>
+          <Text style={styles.infoValue}>Kelas {sesi.kelas}</Text>
+          <Text style={styles.infoSubValue}>{sesi.lab}</Text>
+        </View>
+      </View>
+
+      <View style={styles.attendanceSection}>
+        <View style={styles.attendanceHeading}>
+          <Text style={styles.attendanceLabel}>Kehadiran</Text>
+          <Text style={styles.attendanceCount}>
+            {sesi.hadir}
+            <Text style={styles.attendanceTotal}> / {sesi.total} hadir</Text>
+          </Text>
+        </View>
+
+        <View
+          accessibilityRole="progressbar"
+          accessibilityValue={{ min: 0, max: 100, now: persentase }}
+          style={styles.progressTrack}
+        >
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${persentase}%` as `${number}%` },
+            ]}
+          />
+        </View>
+      </View>
+
+      <View style={styles.cardFooter}>
+        <Text style={styles.detailLink}>Lihat detail sesi</Text>
+        <Text style={styles.detailArrow}>›</Text>
+      </View>
+    </Pressable>
+  );
 }
 
 export default function AsistenJadwalBerandaScreen() {
-  const { sesi, loading, error } = useAsistenWorkflowStore();
+  const [filter, setFilter] = useState<FilterSesi>("semua");
+  const { sesi, pengajuan, loading, error } = useAsistenWorkflowStore();
 
-  return (
-    <SafeAreaView style={styles.safeArea} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.judul}>Jadwal Asisten</Text>
-        <Text style={styles.subjudul}>
-          Jadwal dan sesi praktikum yang kamu kelola.
+  const sesiTerfilter = useMemo(() => {
+    return sesi
+      .filter((sesi) => filter === "semua" || sesi.status === filter)
+      .sort((a, b) => {
+        if (a.status === "dibuka" && b.status !== "dibuka") return -1;
+        if (a.status !== "dibuka" && b.status === "dibuka") return 1;
+        return a.tanggal.localeCompare(b.tanggal);
+      });
+  }, [filter, sesi]);
+
+  const jumlahDibuka = sesi.filter((sesi) => sesi.status === "dibuka").length;
+
+  const jumlahBelumDibuka = sesi.filter(
+    (sesi) => sesi.status === "belum_dibuka",
+  ).length;
+
+  const header = (
+    <View>
+      <View style={styles.brandRow}>
+        <View style={styles.brandMark}>
+          <Text style={styles.brandMarkText}>S!</Text>
+        </View>
+        <Text style={styles.brandName}>Sistem Informasi Praktikum</Text>
+      </View>
+
+      <View style={styles.titleBlock}>
+        <View style={styles.titleRow}>
+          <Text style={styles.screenTitle}>Jadwal Praktikum</Text>
+          <View style={styles.rolePill}>
+            <Text style={styles.rolePillText}>ASISTEN</Text>
+          </View>
+        </View>
+        <Text style={styles.screenSubtitle}>
+          Pantau sesi dan kehadiran praktikan.
         </Text>
-
-        <Text style={styles.judulBagian}>Akses cepat</Text>
-
-        <View style={styles.menu}>
+        <View style={styles.managementActions}>
           <Pressable
             accessibilityRole="button"
-            style={styles.tombolMenu}
+            accessibilityLabel="Kelola data praktikum, kelas, peserta, dan jadwal"
             onPress={() => router.push("/asisten/data")}
+            style={({ pressed }) => [
+              styles.manageDataButton,
+              pressed && styles.pressed,
+            ]}
           >
-            <Text style={styles.teksTombolMenu}>Kelola data</Text>
+            <Text style={styles.manageDataButtonText}>Kelola data</Text>
           </Pressable>
-
           <Pressable
             accessibilityRole="button"
-            style={styles.tombolMenu}
             onPress={() => router.push("/asisten/kelola-sesi")}
+            style={({ pressed }) => [
+              styles.manageDataButton,
+              pressed && styles.pressed,
+            ]}
           >
-            <Text style={styles.teksTombolMenu}>Kelola sesi</Text>
+            <Text style={styles.manageDataButtonText}>Sesi</Text>
           </Pressable>
-
           <Pressable
             accessibilityRole="button"
-            style={styles.tombolMenu}
+            accessibilityLabel={`Tinjau ${pengajuan.filter((item) => item.status === "menunggu").length} pengajuan izin menunggu`}
             onPress={() => router.push("/asisten/izin")}
+            style={({ pressed }) => [
+              styles.manageDataButton,
+              styles.reviewButton,
+              pressed && styles.pressed,
+            ]}
           >
-            <Text style={styles.teksTombolMenu}>Kelola izin</Text>
+            <Text
+              style={[styles.manageDataButtonText, styles.reviewButtonText]}
+            >
+              Izin ·{" "}
+              {pengajuan.filter((item) => item.status === "menunggu").length}
+            </Text>
           </Pressable>
         </View>
+      </View>
 
-        <Text style={styles.judulBagian}>Daftar sesi</Text>
+      <View style={styles.summaryCard}>
+        <View style={styles.summaryHeading}>
+          <Text style={styles.summaryEyebrow}>RINGKASAN JADWAL</Text>
+          <Text style={styles.summaryPeriod}>Sprint 3</Text>
+        </View>
 
-        {loading ? (
-          <View style={styles.infoBox}>
-            <ActivityIndicator color={colors.primary} />
-            <Text style={styles.teksInfo}>Memuat jadwal sesi...</Text>
+        <View style={styles.summaryStats}>
+          <View style={styles.summaryStat}>
+            <Text style={styles.summaryNumber}>{sesi.length}</Text>
+            <Text style={styles.summaryLabel}>Total sesi</Text>
           </View>
-        ) : error ? (
-          <View style={styles.infoBox}>
-            <Text style={styles.teksError}>{error}</Text>
-          </View>
-        ) : sesi.length === 0 ? (
-          <View style={styles.infoBox}>
-            <Text style={styles.teksInfo}>Belum ada sesi praktikum.</Text>
-          </View>
-        ) : (
-          <View style={styles.daftarSesi}>
-            {sesi.map((item) => (
-              <Pressable
-                key={item.id}
-                accessibilityRole="button"
-                style={styles.kartuSesi}
-                onPress={() => bukaDetailSesi(item.id)}
-              >
-                <View style={styles.barisAtas}>
-                  <Text style={styles.namaPraktikum}>{item.praktikum}</Text>
-                  <View
-                    style={[
-                      styles.badgeStatus,
-                      item.status === "dibuka" && styles.badgeDibuka,
-                      item.status === "ditutup" && styles.badgeDitutup,
-                      item.status === "belum_dibuka" && styles.badgeBelumDibuka,
-                    ]}
-                  >
-                    <Text style={styles.teksBadge}>
-                      {teksStatus(item.status)}
-                    </Text>
-                  </View>
-                </View>
 
-                <Text style={styles.detailSesi}>
-                  Pertemuan {item.pertemuanKe} · Kelas {item.kelas}
-                </Text>
-                <Text style={styles.detailSesi}>{formatTanggal(item.tanggal)}</Text>
-                <Text style={styles.detailSesi}>
-                  {item.jamMulai}–{item.jamSelesai} · {item.lab}
-                </Text>
-                <Text style={styles.jumlahHadir}>
-                  Kehadiran: {item.hadir}/{item.total} praktikan
-                </Text>
-              </Pressable>
-            ))}
+          <View style={styles.summaryDivider} />
+
+          <View style={styles.summaryStat}>
+            <Text style={styles.summaryNumber}>{jumlahDibuka}</Text>
+            <Text style={styles.summaryLabel}>Sedang dibuka</Text>
           </View>
-        )}
+
+          <View style={styles.summaryDivider} />
+
+          <View style={styles.summaryStat}>
+            <Text style={styles.summaryNumber}>{jumlahBelumDibuka}</Text>
+            <Text style={styles.summaryLabel}>Belum dibuka</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.listHeading}>
+        <View>
+          <Text style={styles.listTitle}>Daftar sesi</Text>
+          <Text style={styles.listSubtitle}>
+            Pilih sesi untuk melihat informasi lengkap.
+          </Text>
+        </View>
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filters}
+      >
+        {(Object.keys(LABEL_FILTER) as FilterSesi[]).map((item) => (
+          <FilterButton
+            key={item}
+            label={LABEL_FILTER[item]}
+            selected={filter === item}
+            onPress={() => setFilter(item)}
+          />
+        ))}
       </ScrollView>
+    </View>
+  );
+
+  return (
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
+      <FlatList
+        data={sesiTerfilter}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => <SessionCard sesi={item} />}
+        ListHeaderComponent={header}
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.emptyState}>
+              <ActivityIndicator color={WARNA.primary} />
+              <Text style={styles.emptyDescription}>Memuat jadwal sesi...</Text>
+            </View>
+          ) : error ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>Gagal memuat jadwal</Text>
+              <Text style={styles.emptyDescription}>{error}</Text>
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyMark}>
+                <Text style={styles.emptyMarkText}>—</Text>
+              </View>
+              <Text style={styles.emptyTitle}>Belum ada sesi</Text>
+              <Text style={styles.emptyDescription}>
+                Belum ada jadwal dengan status “{LABEL_FILTER[filter]}”.
+              </Text>
+            </View>
+          )
+        }
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+      />
     </SafeAreaView>
   );
 }
@@ -146,119 +342,402 @@ export default function AsistenJadwalBerandaScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: WARNA.bg,
   },
-  content: {
-    width: "100%",
-    maxWidth: 800,
-    alignSelf: "center",
-    padding: 20,
-    paddingBottom: 32,
+  listContent: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 28,
   },
-  judul: {
-    color: colors.text,
-    fontSize: 26,
-    fontWeight: "700",
-  },
-  subjudul: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    marginTop: 6,
-  },
-  judulBagian: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: "700",
-    marginTop: 24,
-    marginBottom: 12,
-  },
-  menu: {
-    gap: 10,
-  },
-  tombolMenu: {
-    minHeight: 48,
-    justifyContent: "center",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    backgroundColor: colors.primary,
-  },
-  teksTombolMenu: {
-    color: colors.background,
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  daftarSesi: {
-    gap: 12,
-  },
-  kartuSesi: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
-    padding: 16,
-    backgroundColor: colors.backgroundElement,
-  },
-  barisAtas: {
+  brandRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
+    gap: 9,
+    marginBottom: 24,
+  },
+  brandMark: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: WARNA.primary,
+  },
+  brandMarkText: {
+    color: WARNA.surface,
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+  },
+  brandName: {
+    color: WARNA.textMuted,
+    fontSize: 12,
+    fontWeight: "600",
+    letterSpacing: 0.15,
+  },
+  titleBlock: {
+    marginBottom: 20,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
   },
-  namaPraktikum: {
+  screenTitle: {
     flex: 1,
-    color: colors.text,
-    fontSize: 17,
+    color: WARNA.text,
+    fontSize: 27,
+    lineHeight: 33,
+    fontWeight: "800",
+    letterSpacing: -0.7,
+  },
+  rolePill: {
+    backgroundColor: WARNA.highlight,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 99,
+  },
+  rolePillText: {
+    color: WARNA.text,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+  },
+  screenSubtitle: {
+    color: WARNA.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 6,
+  },
+  manageDataButton: {
+    alignSelf: "flex-start",
+    minHeight: 38,
+    justifyContent: "center",
+    paddingHorizontal: 13,
+    marginTop: 12,
+    borderRadius: 11,
+    backgroundColor: WARNA.primary,
+  },
+  managementActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 12,
+  },
+  reviewButton: {
+    backgroundColor: WARNA.highlight,
+  },
+  reviewButtonText: {
+    color: WARNA.text,
+  },
+  manageDataButtonText: {
+    color: WARNA.bg,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  summaryCard: {
+    padding: 17,
+    borderRadius: 20,
+    backgroundColor: WARNA.text,
+    marginBottom: 26,
+  },
+  summaryHeading: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 18,
+  },
+  summaryEyebrow: {
+    color: "rgba(254, 255, 224, 0.78)",
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1,
+  },
+  summaryPeriod: {
+    color: WARNA.text,
+    backgroundColor: WARNA.highlight,
+    borderRadius: 20,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    fontSize: 10,
     fontWeight: "700",
   },
-  badgeStatus: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: colors.backgroundSelected,
+  summaryStats: {
+    flexDirection: "row",
+    alignItems: "center",
   },
-  badgeDibuka: {
-    backgroundColor: colors.accent,
+  summaryStat: {
+    flex: 1,
   },
-  badgeDitutup: {
-    backgroundColor: colors.border,
+  summaryNumber: {
+    color: WARNA.surface,
+    fontSize: 25,
+    lineHeight: 30,
+    fontWeight: "800",
+    letterSpacing: -0.5,
   },
-  badgeBelumDibuka: {
-    backgroundColor: colors.highlight,
+  summaryLabel: {
+    color: "rgba(254, 255, 224, 0.78)",
+    fontSize: 10,
+    lineHeight: 15,
+    marginTop: 3,
   },
-  teksBadge: {
-    color: colors.text,
+  summaryDivider: {
+    width: 1,
+    height: 38,
+    backgroundColor: "rgba(254, 255, 224, 0.22)",
+    marginHorizontal: 10,
+  },
+  listHeading: {
+    marginBottom: 14,
+  },
+  listTitle: {
+    color: WARNA.text,
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+  },
+  listSubtitle: {
+    color: WARNA.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 3,
+  },
+  filters: {
+    gap: 8,
+    paddingBottom: 16,
+  },
+  filterButton: {
+    minHeight: 36,
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    borderRadius: 99,
+    borderWidth: 1,
+    borderColor: WARNA.border,
+    backgroundColor: WARNA.bg,
+  },
+  filterButtonSelected: {
+    borderColor: WARNA.primary,
+    backgroundColor: WARNA.primary,
+  },
+  filterText: {
+    color: WARNA.textMuted,
     fontSize: 12,
     fontWeight: "700",
   },
-  detailSesi: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    marginTop: 8,
+  filterTextSelected: {
+    color: WARNA.surface,
   },
-  jumlahHadir: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: "600",
-    marginTop: 12,
+  sessionCard: {
+    padding: 16,
+    marginBottom: 13,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: WARNA.border,
+    backgroundColor: WARNA.surface,
+    shadowColor: WARNA.text,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.055,
+    shadowRadius: 12,
+    elevation: 2,
   },
-  infoBox: {
-    minHeight: 90,
+  sessionCardPressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.99 }],
+  },
+  pressed: {
+    opacity: 0.75,
+  },
+  cardTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginBottom: 12,
+  },
+  cardEyebrow: {
+    color: WARNA.textMuted,
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+  statusBadge: {
+    minHeight: 27,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: 6,
+    paddingHorizontal: 10,
+    borderRadius: 99,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
-    padding: 16,
-    backgroundColor: colors.backgroundElement,
   },
-  teksInfo: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    textAlign: "center",
+  status_dibuka: {
+    backgroundColor: WARNA.highlight,
+    borderColor: WARNA.highlight,
   },
-  teksError: {
-    color: colors.primary,
-    fontSize: 14,
+  status_belum_dibuka: {
+    backgroundColor: WARNA.bg,
+    borderColor: WARNA.textMuted,
+  },
+  status_ditutup: {
+    backgroundColor: WARNA.primary,
+    borderColor: WARNA.primary,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: WARNA.text,
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  statusText_dibuka: {
+    color: WARNA.text,
+  },
+  statusText_belum_dibuka: {
+    color: WARNA.text,
+  },
+  statusText_ditutup: {
+    color: WARNA.surface,
+  },
+  courseName: {
+    color: WARNA.text,
+    fontSize: 19,
+    lineHeight: 24,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+  },
+  sessionMeta: {
+    color: WARNA.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 3,
+  },
+  metaSeparator: {
+    color: WARNA.accent,
+    fontWeight: "900",
+  },
+  infoDivider: {
+    height: 1,
+    backgroundColor: WARNA.border,
+    marginVertical: 14,
+  },
+  infoGrid: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  infoBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  infoLabel: {
+    color: WARNA.textMuted,
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.9,
+    marginBottom: 5,
+  },
+  infoValue: {
+    color: WARNA.text,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+  },
+  infoSubValue: {
+    color: WARNA.textMuted,
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  attendanceSection: {
+    marginTop: 15,
+  },
+  attendanceHeading: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    marginBottom: 7,
+  },
+  attendanceLabel: {
+    color: WARNA.textMuted,
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  attendanceCount: {
+    color: WARNA.primary,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  attendanceTotal: {
+    color: WARNA.textMuted,
+    fontWeight: "600",
+  },
+  progressTrack: {
+    height: 6,
+    overflow: "hidden",
+    borderRadius: 99,
+    backgroundColor: WARNA.border,
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 99,
+    backgroundColor: WARNA.primary,
+  },
+  cardFooter: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 14,
+  },
+  detailLink: {
+    color: WARNA.primary,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  detailArrow: {
+    color: WARNA.primary,
+    fontSize: 20,
+    lineHeight: 20,
+    marginTop: -2,
+  },
+  emptyState: {
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 42,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: WARNA.border,
+    backgroundColor: WARNA.soft,
+  },
+  emptyMark: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: WARNA.highlight,
+    marginBottom: 12,
+  },
+  emptyMarkText: {
+    color: WARNA.text,
+    fontSize: 22,
+    fontWeight: "700",
+  },
+  emptyTitle: {
+    color: WARNA.text,
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  emptyDescription: {
+    color: WARNA.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
     textAlign: "center",
+    marginTop: 5,
   },
 });
