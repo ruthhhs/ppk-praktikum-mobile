@@ -37,7 +37,6 @@ const jadwalFields = [
   "jamMulai",
   "jamSelesai",
   "lokasi",
-  "aktif",
 ];
 
 /**

@@ -12,21 +12,10 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../../constants/theme";
 import {
-    useAsistenWorkflowStore,
-    type DraftSesi,
-    type SesiAsisten,
+  useAsistenWorkflowStore,
+  type JadwalSiap,
+  type SesiAsisten,
 } from "./AsistenWorkflowStore";
-
-const emptyDraft: DraftSesi = {
-  praktikum: "",
-  pertemuanKe: 1,
-  kelas: "",
-  lab: "",
-  tanggal: "",
-  jamMulai: "",
-  jamSelesai: "",
-  catatan: "",
-};
 
 function isValidDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -79,12 +68,10 @@ function formatDate(value: string) {
 
 function SessionRow({
   session,
-  onEdit,
   onDelete,
   canDelete,
 }: {
   session: SesiAsisten;
-  onEdit: () => void;
   onDelete: () => void;
   canDelete: boolean;
 }) {
@@ -137,7 +124,6 @@ function SessionRow({
         <Pressable
           accessibilityRole="button"
           disabled={session.status !== "belum_dibuka"}
-          onPress={onEdit}
           style={[
             styles.action,
             session.status !== "belum_dibuka" && styles.disabled,
@@ -174,74 +160,37 @@ function SessionRow({
 }
 
 export default function AsistenKelolaSesiScreen() {
-  const { sesi, pengajuan, simpanSesi, hapusSesi } = useAsistenWorkflowStore();
-  const [formVisible, setFormVisible] = useState(false);
-  const [editing, setEditing] = useState<SesiAsisten | null>(null);
-  const [draft, setDraft] = useState<DraftSesi>(emptyDraft);
+  const { sesi, pengajuan, jadwalSiap, bukaSesiDariJadwal, hapusSesi } =
+    useAsistenWorkflowStore();
+  const [target, setTarget] = useState<JadwalSiap | null>(null);
+  const [kode, setKode] = useState("");
+  const [catatan, setCatatan] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SesiAsisten | null>(null);
 
-  const [busy, setBusy] = useState(false);
-
-  function openForm(session?: SesiAsisten) {
-    setEditing(session ?? null);
-    setDraft(
-      session
-        ? {
-            praktikum: session.praktikum,
-            pertemuanKe: session.pertemuanKe,
-            kelas: session.kelas,
-            lab: session.lab,
-            tanggal: session.tanggal,
-            jamMulai: session.jamMulai,
-            jamSelesai: session.jamSelesai,
-            catatan: session.catatan ?? "",
-          }
-        : emptyDraft,
-    );
+  function bukaForm(jadwal: JadwalSiap) {
+    setTarget(jadwal);
+    setKode("");
+    setCatatan("");
     setError("");
-    setFormVisible(true);
   }
 
-  function change(field: keyof DraftSesi, value: string) {
-    setDraft((current) => ({
-      ...current,
-      [field]:
-        field === "pertemuanKe" ? Number(value.replace(/\D/g, "")) : value,
-    }));
-  }
-
-  async function save() {
-    const validDate =
-      /^\d{4}-\d{2}-\d{2}$/.test(draft.tanggal) &&
-      !Number.isNaN(Date.parse(`${draft.tanggal}T00:00:00`));
-    const validTime = (value: string) =>
-      /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
-    if (
-      !draft.praktikum.trim() ||
-      !draft.kelas.trim() ||
-      !draft.lab.trim() ||
-      !isValidDate(draft.tanggal) ||
-      !validTime(draft.jamMulai) ||
-      !validTime(draft.jamSelesai) ||
-      draft.jamSelesai <= draft.jamMulai ||
-      !draft.pertemuanKe
-    ) {
-      setError(
-        "Periksa nama praktikum, kelas, lokasi, tanggal, pertemuan, dan rentang waktu.",
-      );
+  async function bukaSesi() {
+    if (!target || busy) return;
+    if (!/^\d{4}$/.test(kode)) {
+      setError("Kode presensi harus tepat 4 digit.");
       return;
     }
-    const result = await simpanSesi(
-      { ...draft, catatan: draft.catatan?.trim() },
-      editing?.id,
-    );
+    setBusy(true);
+    const result = await bukaSesiDariJadwal(target.id, kode, catatan);
+    setBusy(false);
     if (!result.success) {
       setError(result.message);
       return;
     }
-    setFormVisible(false);
+    setTarget(null);
     setMessage(result.message);
   }
 
@@ -269,29 +218,63 @@ export default function AsistenKelolaSesiScreen() {
             <Text style={styles.eyebrow}>AREA ASISTEN</Text>
             <Text style={styles.title}>Sesi Praktikum</Text>
             <Text style={styles.subtitle}>
-              Kelola pertemuan dan pantau status sesi.
+              Buka sesi dari jadwal yang aktif.
             </Text>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Tambah sesi"
-            onPress={() => openForm()}
-            style={styles.addButton}
-          >
-            <Text style={styles.addText}>＋</Text>
-          </Pressable>
         </View>
         {message ? (
           <Text accessibilityRole="alert" style={styles.message}>
             {message}
           </Text>
         ) : null}
+
+        <Text style={[styles.eyebrow, { marginTop: 18, marginBottom: 6 }]}>
+          JADWAL SIAP DIBUKA
+        </Text>
+        {jadwalSiap.length ? (
+          jadwalSiap.map((jadwal) => (
+            <View key={jadwal.id} style={styles.sessionCard}>
+              <View style={styles.sessionHeading}>
+                <View style={styles.sessionHeadingText}>
+                  <Text style={styles.sessionCourse}>{jadwal.praktikum}</Text>
+                  <Text style={styles.sessionMeta}>
+                    Pertemuan {jadwal.pertemuanKe} · Kelas {jadwal.kelas}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.sessionDetail}>
+                {formatDate(jadwal.tanggal)} · {jadwal.jamMulai}–
+                {jadwal.jamSelesai}
+              </Text>
+              <Text style={styles.sessionDetail}>{jadwal.lab}</Text>
+              <View style={styles.actions}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => bukaForm(jadwal)}
+                  style={styles.primaryAction}
+                >
+                  <Text style={styles.primaryActionText}>Buka sesi</Text>
+                </Pressable>
+              </View>
+            </View>
+          ))
+        ) : (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>Tidak ada jadwal aktif</Text>
+            <Text style={styles.emptyText}>
+              Buat jadwal di Kelola Data, lalu buka sesinya dari sini.
+            </Text>
+          </View>
+        )}
+
+        <Text style={[styles.eyebrow, { marginTop: 18, marginBottom: 6 }]}>
+          SESI
+        </Text>
         {sesi.length ? (
           sesi.map((session) => (
             <SessionRow
               key={session.id}
               session={session}
-              onEdit={() => openForm(session)}
               onDelete={() => setDeleteTarget(session)}
               canDelete={!pengajuan.some((item) => item.sesiId === session.id)}
             />
@@ -300,33 +283,33 @@ export default function AsistenKelolaSesiScreen() {
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>Belum ada sesi</Text>
             <Text style={styles.emptyText}>
-              Buat sesi pertama untuk memulai.
+              Sesi muncul di sini setelah dibuka dari jadwal.
             </Text>
           </View>
         )}
       </ScrollView>
 
       <Modal
-        visible={formVisible}
+        visible={!!target}
         transparent
         animationType="slide"
-        onRequestClose={() => setFormVisible(false)}
+        onRequestClose={() => setTarget(null)}
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.formCard}>
             <View style={styles.modalHeading}>
               <View>
-                <Text style={styles.eyebrow}>
-                  {editing ? "UBAH SESI" : "SESI BARU"}
-                </Text>
+                <Text style={styles.eyebrow}>BUKA SESI</Text>
                 <Text style={styles.modalTitle}>
-                  {editing ? "Ubah sesi" : "Tambah sesi"}
+                  {target
+                    ? `${target.praktikum} · Pertemuan ${target.pertemuanKe}`
+                    : ""}
                 </Text>
               </View>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Tutup"
-                onPress={() => setFormVisible(false)}
+                onPress={() => setTarget(null)}
               >
                 <Text style={styles.close}>×</Text>
               </Pressable>
@@ -336,64 +319,18 @@ export default function AsistenKelolaSesiScreen() {
               contentContainerStyle={styles.formFields}
             >
               <Field
-                label="Praktikum"
-                value={draft.praktikum}
-                onChangeText={(value) => change("praktikum", value)}
-                placeholder="Nama praktikum"
-              />
-              <View style={styles.inlineFields}>
-                <View style={styles.inlineHalf}>
-                  <Field
-                    label="Pertemuan ke"
-                    value={String(draft.pertemuanKe || "")}
-                    onChangeText={(value) => change("pertemuanKe", value)}
-                    placeholder="1"
-                    keyboardType="numeric"
-                  />
-                </View>
-                <View style={styles.inlineHalf}>
-                  <Field
-                    label="Kelas"
-                    value={draft.kelas}
-                    onChangeText={(value) => change("kelas", value)}
-                    placeholder="A"
-                  />
-                </View>
-              </View>
-              <Field
-                label="Tanggal"
-                value={draft.tanggal}
-                onChangeText={(value) => change("tanggal", value)}
-                placeholder="YYYY-MM-DD"
-              />
-              <View style={styles.inlineFields}>
-                <View style={styles.inlineHalf}>
-                  <Field
-                    label="Mulai"
-                    value={draft.jamMulai}
-                    onChangeText={(value) => change("jamMulai", value)}
-                    placeholder="08:00"
-                  />
-                </View>
-                <View style={styles.inlineHalf}>
-                  <Field
-                    label="Selesai"
-                    value={draft.jamSelesai}
-                    onChangeText={(value) => change("jamSelesai", value)}
-                    placeholder="10:00"
-                  />
-                </View>
-              </View>
-              <Field
-                label="Lokasi"
-                value={draft.lab}
-                onChangeText={(value) => change("lab", value)}
-                placeholder="Laboratorium"
+                label="Kode presensi (4 digit)"
+                value={kode}
+                onChangeText={(value) =>
+                  setKode(value.replace(/\D/g, "").slice(0, 4))
+                }
+                placeholder="1234"
+                keyboardType="numeric"
               />
               <Field
                 label="Catatan (opsional)"
-                value={draft.catatan ?? ""}
-                onChangeText={(value) => change("catatan", value)}
+                value={catatan}
+                onChangeText={setCatatan}
                 placeholder="Topik pertemuan"
               />
               {error ? (
@@ -404,17 +341,24 @@ export default function AsistenKelolaSesiScreen() {
               <View style={styles.actions}>
                 <Pressable
                   accessibilityRole="button"
-                  onPress={() => setFormVisible(false)}
+                  onPress={() => setTarget(null)}
                   style={[styles.modalButton, styles.cancelButton]}
                 >
                   <Text style={styles.cancelText}>Batal</Text>
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
-                  onPress={save}
-                  style={[styles.modalButton, styles.saveButton]}
+                  disabled={busy}
+                  onPress={bukaSesi}
+                  style={[
+                    styles.modalButton,
+                    styles.saveButton,
+                    busy && styles.disabled,
+                  ]}
                 >
-                  <Text style={styles.saveText}>Simpan</Text>
+                  <Text style={styles.saveText}>
+                    {busy ? "Membuka..." : "Buka sesi"}
+                  </Text>
                 </Pressable>
               </View>
             </ScrollView>
