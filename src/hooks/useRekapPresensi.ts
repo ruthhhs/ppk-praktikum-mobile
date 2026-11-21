@@ -1,8 +1,10 @@
 // =====================================================================
-// HOOK DATA REKAP PRESENSI (B3)
+// HOOK DATA REKAP PRESENSI (B3, diperbarui B4)
 // ---------------------------------------------------------------------
 // Menghubungkan layar Rekap Presensi Asisten ke Cloud Firestore secara
 // real-time dengan listener onSnapshot pada sesi/{sesiId}/presensi.
+// B4: menambahkan jarak dan akurasi presensi (field baru Sprint 3).
+// Dokumen presensi Sprint 2 tidak punya field ini, jadi nilainya null.
 // =====================================================================
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PresensiDoc } from "../data/firestoreType";
@@ -18,9 +20,24 @@ export type PraktikanHadir = {
   nama: string;
   nim: string;
   waktu: string;
+  /** Jarak ke lab saat presensi (meter); null bila tidak tercatat. */
+  jarakMeter: number | null;
+  /** Akurasi GPS saat presensi (meter); null bila tidak tercatat. */
+  akurasi: number | null;
 };
 
 export type StatusMuat = "loading" | "error" | "ready";
+
+// Field lokasi bersifat opsional agar dokumen Sprint 2 tetap terbaca.
+type PresensiBerLokasi = PresensiDoc & {
+  id: string;
+  jarakMeter?: number;
+  akurasi?: number;
+};
+
+function angkaAtauNull(nilai: unknown): number | null {
+  return typeof nilai === "number" && Number.isFinite(nilai) ? nilai : null;
+}
 
 // Cache profil pengguna untuk menghindari fetch Firestore berulang
 const profileCache = new Map<string, { nama: string; nim: string }>();
@@ -36,7 +53,7 @@ export function useRekapPresensi(sesiId?: string) {
   );
   const targetSesiId = session?.id ?? sesiId;
 
-  const [rawPresensi, setRawPresensi] = useState<(PresensiDoc & { id: string })[]>([]);
+  const [rawPresensi, setRawPresensi] = useState<PresensiBerLokasi[]>([]);
   const [userProfiles, setUserProfiles] = useState<
     Record<string, { nama: string; nim: string }>
   >({});
@@ -129,6 +146,8 @@ export function useRekapPresensi(sesiId?: string) {
           nama: profile?.nama ?? "Praktikan",
           nim: profile?.nim ?? "NIM tidak tersedia",
           waktu: waktuStr,
+          jarakMeter: angkaAtauNull(entry.jarakMeter),
+          akurasi: angkaAtauNull(entry.akurasi),
         };
       })
       .sort((a, b) => a.waktu.localeCompare(b.waktu));
