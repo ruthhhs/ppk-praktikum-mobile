@@ -34,6 +34,8 @@ import {
   updateDocument,
 } from "../../services/firebase/firestore";
 import { useDaftarPraktikan } from "./useDaftarPraktikan";
+import { pantauLaboratorium } from "../../services/peta/laboratoriumPeta";
+import type { LabPeta } from "../../services/peta/tipe";
 
 type DataKind = "praktikum" | "kelas" | "peserta" | "jadwal";
 type RecordItem = { id: string; aktif: boolean };
@@ -144,7 +146,7 @@ function ChoiceChips({
   onSelect,
 }: {
   label: string;
-  choices: { id: string; label: string }[];
+  choices: { id: string; label: string; disabled?: boolean }[];
   selectedId: string;
   onSelect: (id: string) => void;
 }) {
@@ -157,11 +159,16 @@ function ChoiceChips({
             <Pressable
               key={choice.id}
               accessibilityRole="button"
-              accessibilityState={{ selected: choice.id === selectedId }}
+              accessibilityState={{
+                selected: choice.id === selectedId,
+                disabled: choice.disabled,
+              }}
+              disabled={choice.disabled}
               onPress={() => onSelect(choice.id)}
               style={[
                 styles.choice,
                 choice.id === selectedId && styles.choiceSelected,
+                choice.disabled && { opacity: 0.45 },
               ]}
             >
               <Text
@@ -265,6 +272,12 @@ export default function AsistenKelolaDataScreen() {
     null,
   );
   const [busy, setBusy] = useState(false);
+  const [labs, setLabs] = useState<LabPeta[] | null>(null);
+
+  useEffect(
+    () => pantauLaboratorium("asisten", setLabs, () => setLabs(null)),
+    [],
+  );
 
   useEffect(() => {
     if (role !== "asisten" || !user) {
@@ -379,6 +392,19 @@ export default function AsistenKelolaDataScreen() {
       ),
     [peserta, draft.kelasId],
   );
+  const pilihanLab = useMemo(
+    () =>
+      LABORATORIUM_TETAP.map((lab) => {
+        const nonaktif = labs?.find((l) => l.id === lab.id)?.aktif === false;
+        return {
+          id: lab.id,
+          label: nonaktif ? `${lab.nama} (nonaktif)` : lab.nama,
+          // Kelas lama boleh tetap memakai lab yang kini nonaktif.
+          disabled: nonaktif && lab.id !== draft.labId,
+        };
+      }),
+    [labs, draft.labId],
+  );
 
   const filtered = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("id-ID");
@@ -479,6 +505,10 @@ export default function AsistenKelolaDataScreen() {
       } else if (formKind === "kelas") {
         if (!draft.nama.trim() || !draft.praktikumId || !draft.labId)
           throw new Error("Nama kelas, praktikum, dan laboratorium wajib dipilih.");
+          const labDipilih = labs?.find((l) => l.id === draft.labId);
+          const labLama = kelas.find((k) => k.id === editingId)?.labId;
+          if (labDipilih?.aktif === false && draft.labId !== labLama)
+           throw new Error("Laboratorium nonaktif tidak dapat dipilih untuk kelas ini.");
         const value = {
           praktikumId: draft.praktikumId,
           labId: draft.labId,
@@ -795,10 +825,7 @@ export default function AsistenKelolaDataScreen() {
           />
           <ChoiceChips
             label="Laboratorium"
-            choices={LABORATORIUM_TETAP.map((lab) => ({
-              id: lab.id,
-              label: lab.nama,
-            }))}
+            choices={pilihanLab}
             selectedId={draft.labId}
             onSelect={(value) => updateDraft("labId", value)}
           />

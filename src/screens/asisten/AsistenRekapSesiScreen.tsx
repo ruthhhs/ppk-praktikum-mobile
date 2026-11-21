@@ -119,242 +119,12 @@ function Tombol({
   );
 }
 
-// export default function AsistenRekapSesiScreen() {
-//   const { sesiId } = useLocalSearchParams<{ sesiId?: string }>();
-//   const activeSessionId = Array.isArray(sesiId) ? sesiId[0] : sesiId;
-//   const { sesi, tutup } = useAsistenWorkflowStore();
-//   const { presensi } = useApp();
-//   const currentSession =
-//     sesi.find((item) => item.id === activeSessionId) ?? sesi[0];
-//   const session = currentSession ?? {
-//     id: "",
-//     praktikum: "Praktikum",
-//     pertemuanKe: 0,
-//     kelas: "-",
-//     lab: "-",
-//     tanggal: "2026-01-01",
-//     jamMulai: "--:--",
-//     jamSelesai: "--:--",
-//     status: "belum_dibuka" as StatusSesi,
-//     hadir: 0,
-//     total: 0,
-//   };
-//   const [modalTutupTerbuka, setModalTutupTerbuka] = useState(false);
-//   const [feedback, setFeedback] = useState("");
-
-//   const daftarTerurut = useMemo(
-//     () =>
-//       presensi
-//         .filter((entry) => entry.sesiId === session.id)
-//         .map((entry): PraktikanHadir => {
-//           const user = dummyUsers.find((item) => item.id === entry.praktikanId);
-//           return {
-//             id: entry.id,
-//             nama: user?.nama ?? "Praktikan",
-//             nim: user?.nim ?? "NIM tidak tersedia",
-//             waktu: new Date(entry.waktuHadir).toLocaleTimeString("id-ID", {
-//               hour: "2-digit",
-//               minute: "2-digit",
-//               second: "2-digit",
-//               hour12: false,
-//               timeZone: "Asia/Jakarta",
-//             }),
-//           };
-//         })
-//         .sort((a, b) => a.waktu.localeCompare(b.waktu)),
-//     [presensi, session.id],
-//   );
-
-//   const jumlahHadir = daftarTerurut.length;
-//   const persentase =
-//     session.total > 0 ? Math.round((jumlahHadir / session.total) * 100) : 0;
-
-//   function tutupSesi() {
-//     const result = tutup(session.id);
-//     setFeedback(result.message);
-//     setModalTutupTerbuka(false);
-//   }
-
-//   return (
-//     <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
-//       <View style={styles.page}>
-//         <Pressable
-//           accessibilityRole="button"
-//           accessibilityLabel="Kembali"
-//           onPress={() => router.back()}
-//           style={({ pressed }) => [
-//             styles.backButton,
-//             pressed && styles.pressed,
-//           ]}
-//         >
-//           <Text style={styles.backArrow}>‹</Text>
-//           <Text style={styles.backLabel}>Kembali</Text>
-//         </Pressable>
-
-//         <View style={styles.heading}>
-//           <Text style={styles.eyebrow}>PRESENSI PRAKTIKUM</Text>
-//           <Text style={styles.title}>Rekap Kehadiran</Text>
-//         </View>
-
-//         <View style={styles.sessionHeader}>
-//           <View style={styles.sessionHeaderText}>
-//             <Text style={styles.courseName}>{session.praktikum}</Text>
-//             <Text style={styles.sessionMeta}>
-//               Pertemuan {session.pertemuanKe} · Kelas {session.kelas} ·{" "}
-//               {formatTanggal(session.tanggal)}
-//             </Text>
-//           </View>
-//           <StatusBadge status={session.status} />
-//         </View>
-
-//         <View style={styles.summaryCard}>
-//           <View style={styles.summaryTop}>
-//             <View>
-//               <Text style={styles.summaryEyebrow}>TOTAL KEHADIRAN</Text>
-//               <Text style={styles.summaryCount}>
-//                 {jumlahHadir}
-//                 <Text style={styles.summaryTotal}> / {session.total}</Text>
-//               </Text>
-//               <Text style={styles.summaryCaption}>praktikan hadir</Text>
-//             </View>
-
-//             <View style={styles.percentCircle}>
-//               <Text style={styles.percentValue}>{persentase}%</Text>
-//             </View>
-//           </View>
-
-//           <View style={styles.progressTrack}>
-//             <View
-//               style={[
-//                 styles.progressFill,
-//                 { width: `${persentase}%` as `${number}%` },
-//               ]}
-//             />
-//           </View>
-//         </View>
-
-//         <View style={styles.listHeading}>
-//           <View>
-//             <Text style={styles.listTitle}>Daftar praktikan</Text>
-//             <Text style={styles.listSubtitle}>
-//               Diurutkan berdasarkan waktu presensi
-//             </Text>
-//           </View>
-//           <Text style={styles.listCount}>{jumlahHadir} hadir</Text>
-//         </View>
-
-//         <ScrollView
-//           style={styles.list}
-//           contentContainerStyle={styles.listContent}
-//           showsVerticalScrollIndicator={false}
-//         >
-//           {daftarTerurut.length === 0 ? (
-//             <View style={styles.emptyState}>
-//               <View style={styles.emptyIcon}>
-//                 <Text style={styles.emptyIconText}>—</Text>
-//               </View>
-//               <Text style={styles.emptyTitle}>Belum ada yang presensi</Text>
-//               <Text style={styles.emptyDescription}>
-//                 Praktikan yang hadir akan muncul di daftar ini.
-//               </Text>
-//             </View>
-//           ) : (
-//             daftarTerurut.map((praktikan, index) => (
-//               <View key={praktikan.id} style={styles.attendeeRow}>
-//                 <Text style={styles.attendeeNumber}>
-//                   {String(index + 1).padStart(2, "0")}
-//                 </Text>
-
-//                 <View style={styles.avatar}>
-//                   <Text style={styles.avatarText}>
-//                     {praktikan.nama
-//                       .split(" ")
-//                       .slice(0, 2)
-//                       .map((bagian) => bagian[0])
-//                       .join("")
-//                       .toUpperCase()}
-//                   </Text>
-//                 </View>
-
-//                 <View style={styles.attendeeInfo}>
-//                   <Text style={styles.attendeeName}>{praktikan.nama}</Text>
-//                   <Text style={styles.attendeeNim}>{praktikan.nim}</Text>
-//                 </View>
-
-//                 <View style={styles.timePill}>
-//                   <Text style={styles.timeText}>{praktikan.waktu}</Text>
-//                 </View>
-//               </View>
-//             ))
-//           )}
-//         </ScrollView>
-
-//         {feedback ? (
-//           <Text accessibilityRole="alert" style={styles.feedback}>
-//             {feedback}
-//           </Text>
-//         ) : null}
-//         {session.status === "dibuka" ? (
-//           <View style={styles.bottomAction}>
-//             <Tombol
-//               label="Tutup Sesi"
-//               variant="danger"
-//               onPress={() => setModalTutupTerbuka(true)}
-//             />
-//           </View>
-//         ) : (
-//           <View style={styles.closedBanner}>
-//             <View style={styles.closedCheck}>
-//               <Text style={styles.closedCheckText}>
-//                 {session.status === "ditutup" ? "✓" : "·"}
-//               </Text>
-//             </View>
-//             <Text style={styles.closedText}>
-//               {session.status === "ditutup"
-//                 ? "Sesi telah ditutup"
-//                 : "Sesi belum dibuka"}
-//             </Text>
-//           </View>
-//         )}
-//       </View>
-
-//       <Modal
-//         visible={modalTutupTerbuka}
-//         transparent
-//         animationType="fade"
-//         onRequestClose={() => setModalTutupTerbuka(false)}
-//       >
-//         <View style={styles.modalBackdrop}>
-//           <Pressable
-//             accessibilityRole="button"
-//             accessibilityLabel="Batalkan konfirmasi"
-//             onPress={() => setModalTutupTerbuka(false)}
-//             style={StyleSheet.absoluteFill}
-//           />
-
-//           <View style={styles.modalCard}>
-//             <View style={styles.modalIcon}>
-//               <Text style={styles.modalIconText}>!</Text>
-//             </View>
-//             <Text style={styles.modalTitle}>Tutup sesi?</Text>
-//             <Text style={styles.modalDescription}>
-//               Presensi tidak bisa dilakukan lagi setelah sesi ditutup.
-//             </Text>
-
-//             <View style={styles.modalActions}>
-//               <Tombol
-//                 label="Batal"
-//                 variant="outline"
-//                 onPress={() => setModalTutupTerbuka(false)}
-//               />
-//               <Tombol label="Tutup Sesi" variant="danger" onPress={tutupSesi} />
-//             </View>
-//           </View>
-//         </View>
-//       </Modal>
-//     </SafeAreaView>
-//   );
-// }
+function formatLokasi(jarak: number | null, akurasi: number | null) {
+  if (jarak === null) return "Lokasi tidak tercatat";
+  const bagianAkurasi =
+    akurasi === null ? "" : ` · akurasi ±${Math.round(akurasi)} m`;
+  return `Jarak ${Math.round(jarak)} m${bagianAkurasi}`;
+}
 
 export default function AsistenRekapSesiScreen() {
   const { sesiId } = useLocalSearchParams<{ sesiId?: string }>();
@@ -532,6 +302,9 @@ export default function AsistenRekapSesiScreen() {
                 <View style={styles.attendeeInfo}>
                   <Text style={styles.attendeeName}>{praktikan.nama}</Text>
                   <Text style={styles.attendeeNim}>{praktikan.nim}</Text>
+                    <Text style={styles.attendeeLokasi}>
+                      {formatLokasi(praktikan.jarakMeter, praktikan.akurasi)}
+                    </Text>
                 </View>
                 <View style={styles.timePill}>
                   <Text style={styles.timeText}>{praktikan.waktu}</Text>
@@ -862,6 +635,11 @@ const styles = StyleSheet.create({
     color: WARNA.textMuted,
     fontSize: 10,
     marginTop: 3,
+  },
+  attendeeLokasi: {
+    fontSize: 12,
+    color: WARNA.highlight,
+    marginTop: 2,
   },
   timePill: {
     paddingHorizontal: 8,
