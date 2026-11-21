@@ -32,10 +32,10 @@ import {
   serverTimestamp,
   setDocument,
   updateDocument,
+  pantauLaboratorium,
 } from "../../services/firebase/firestore";
 import { useDaftarPraktikan } from "./useDaftarPraktikan";
-import { pantauLaboratorium } from "../../services/peta/laboratoriumPeta";
-import type { LabPeta } from "../../services/peta/tipe";
+import type { LaboratoriumDenganId } from "../../data/lokasi";
 
 type DataKind = "praktikum" | "kelas" | "peserta" | "jadwal";
 type RecordItem = { id: string; aktif: boolean };
@@ -272,10 +272,10 @@ export default function AsistenKelolaDataScreen() {
     null,
   );
   const [busy, setBusy] = useState(false);
-  const [labs, setLabs] = useState<LabPeta[] | null>(null);
+  const [labs, setLabs] = useState<LaboratoriumDenganId[] | null>(null);
 
   useEffect(
-    () => pantauLaboratorium("asisten", setLabs, () => setLabs(null)),
+    () => pantauLaboratorium(setLabs, () => setLabs(null)),
     [],
   );
 
