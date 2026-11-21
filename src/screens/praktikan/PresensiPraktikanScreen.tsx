@@ -29,6 +29,10 @@ import {
   isNativeFirebaseConfigured,
 } from '@/services/firebase';
 import { hitungJarakMeter } from '@/utils/hitungJarakMeter';
+import {
+  BATAS_AKURASI_PRESENSI_METER,
+  kirimPresensi,
+} from '@/services/presensi';
 import StatusBadge from '@/components/ui/StatusBadge';
 import {
   PresensiInfoModal,
@@ -43,10 +47,10 @@ import {
   formatTanggalIndonesia,
   LABEL_STATUS,
   normalisasiIdSesiLokal,
+  simpanPresensiLokalTercatat,
   usePraktikanStore,
 } from '@/components/praktikan/praktikanStore';
 
-const BATAS_AKURASI_METER = 50;
 const isFirestoreAktif = isFirebaseConfigured || isNativeFirebaseConfigured;
 
 function formatMeter(nilai: number): string {
@@ -71,15 +75,15 @@ export default function PresensiPraktikanScreen() {
     currentUser,
     isAuthenticated,
     isLoading,
-    isSubmittingPresensi,
     error,
     praktikum,
     sesi,
     presensi,
     pengajuanIzinMap,
-    catatPresensiPraktikan,
     muatUlangData,
   } = usePraktikanStore();
+
+  const [sedangMengirim, setSedangMengirim] = useState(false);
 
   const params = useLocalSearchParams<{ sesiId?: string | string[] }>();
   const paramSesiId = Array.isArray(params.sesiId)
@@ -283,11 +287,11 @@ export default function PresensiPraktikanScreen() {
       };
     }
 
-    if (koordinat.akurasi > BATAS_AKURASI_METER) {
+    if (koordinat.akurasi > BATAS_AKURASI_PRESENSI_METER) {
       return {
         valid: false,
         judul: 'Akurasi GPS belum memadai',
-        pesan: `Akurasi saat ini ±${Math.round(koordinat.akurasi)} m (maksimal ${BATAS_AKURASI_METER} m). Pindah ke area yang lebih terbuka lalu segarkan lokasi.`,
+        pesan: `Akurasi saat ini ±${Math.round(koordinat.akurasi)} m (maksimal ${BATAS_AKURASI_PRESENSI_METER} m). Pindah ke area yang lebih terbuka lalu segarkan lokasi.`,
       };
     }
 
@@ -376,76 +380,68 @@ export default function PresensiPraktikanScreen() {
       );
       return;
     }
-    if (koordinat.mocked) {
-      setAlasanInfoModal('lokasi_mock');
-      return;
-    }
-    if (koordinat.akurasi > BATAS_AKURASI_METER) {
-      setAlasanInfoModal('akurasi_buruk');
-      return;
-    }
-    if (jarakMeter === null || jarakMeter > labData.radiusMeter) {
-      setAlasanInfoModal('di_luar_radius');
-      return;
-    }
 
-    const kodeBersih = kode.trim();
-    if (!kodeBersih) {
-      setPesanErrorInput('Kode presensi wajib diisi.');
-      return;
-    }
-    if (!/^\d{4}$/.test(kodeBersih)) {
-      setPesanErrorInput('Kode presensi harus terdiri dari 4 digit angka.');
-      return;
-    }
+    setSedangMengirim(true);
+    try {
+      const hasil = await kirimPresensi(
+        sesiAktif.id,
+        kode,
+        {
+          lat: koordinat.lat,
+          lng: koordinat.lng,
+          akurasi: koordinat.akurasi,
+          mocked: koordinat.mocked,
+          labId: labData.id,
+        },
+        {
+          uid: currentUser.id,
+          lab: labData,
+          statusSesi: sesiAktif.status,
+        },
+      );
 
-    const hasil = await catatPresensiPraktikan(
-      sesiAktif.id,
-      currentUser.id,
-      kodeBersih,
-    );
+      if (!hasil.ok) {
+        if (
+          hasil.reason === 'kode_kosong' ||
+          hasil.reason === 'kode_format' ||
+          hasil.reason === 'kode_salah' ||
+          hasil.reason === 'lokasi_tidak_tersedia' ||
+          hasil.reason === 'sesi_tidak_ditemukan'
+        ) {
+          setPesanErrorInput(hasil.pesan);
+          return;
+        }
 
-    if (!hasil.ok) {
-      if (
-        hasil.reason === 'kode_kosong' ||
-        hasil.reason === 'kode_format' ||
-        hasil.reason === 'kode_salah'
-      ) {
-        setPesanErrorInput(hasil.pesan);
+        setAlasanInfoModal(hasil.reason);
         return;
       }
 
-      if (
-        hasil.reason === 'sudah_presensi' ||
-        hasil.reason === 'izin_diterima' ||
-        hasil.reason === 'belum_dibuka' ||
-        hasil.reason === 'sudah_ditutup' ||
-        hasil.reason === 'belum_login' ||
-        hasil.reason === 'gagal_jaringan'
-      ) {
-        setAlasanInfoModal(hasil.reason);
-      } else {
-        setPesanErrorInput(hasil.pesan);
-      }
-      return;
-    }
+      simpanPresensiLokalTercatat({
+        id: hasil.userId,
+        sesiId: hasil.sesiId,
+        userId: hasil.userId,
+        waktu: hasil.waktuIso,
+      });
 
-    setKode('');
-    setPesanErrorInput(null);
-    setDataSuksesModal({
-      namaPraktikan: currentUser.nama,
-      nim: currentUser.nim,
-      namaPraktikum: ambilNamaPraktikum(
-        praktikum,
-        sesiAktif.praktikumId,
-        sesiAktif.namaPraktikum,
-      ),
-      pertemuanKe: sesiAktif.pertemuanKe,
-      kelas: sesiAktif.kelas,
-      waktuIso: hasil.presensi.waktu,
-      jarakMeter: jarakMeter ?? undefined,
-      akurasi: koordinat.akurasi,
-    });
+      setKode('');
+      setPesanErrorInput(null);
+      setDataSuksesModal({
+        namaPraktikan: currentUser.nama,
+        nim: currentUser.nim,
+        namaPraktikum: ambilNamaPraktikum(
+          praktikum,
+          sesiAktif.praktikumId,
+          sesiAktif.namaPraktikum,
+        ),
+        pertemuanKe: sesiAktif.pertemuanKe,
+        kelas: sesiAktif.kelas,
+        waktuIso: hasil.waktuIso,
+        jarakMeter: hasil.jarakMeter,
+        akurasi: hasil.akurasi,
+      });
+    } finally {
+      setSedangMengirim(false);
+    }
   };
 
   if (isLoading && !sesiAktif) {
@@ -543,7 +539,7 @@ export default function PresensiPraktikanScreen() {
   const sesiBisaPresensi =
     sesiAktif.status === 'dibuka' && !sudahPresensi && !izinDiterima;
   const tombolKirimNonaktif =
-    !sesiBisaPresensi || !evaluasiLokasi.valid || isSubmittingPresensi;
+    !sesiBisaPresensi || !evaluasiLokasi.valid || sedangMengirim;
 
   const sedangMemuatLokasi =
     statusLokasi === 'memuat' || statusLokasi === 'menunggu_koordinat';
@@ -778,7 +774,7 @@ export default function PresensiPraktikanScreen() {
               placeholderTextColor={colors.textMuted}
               keyboardType="number-pad"
               maxLength={4}
-              editable={sesiBisaPresensi && !isSubmittingPresensi}
+              editable={sesiBisaPresensi && !sedangMengirim}
               accessibilityLabel="Input kode presensi 4 digit"
               style={[
                 styles.codeInput,
@@ -803,7 +799,7 @@ export default function PresensiPraktikanScreen() {
                 pressed && !tombolKirimNonaktif && styles.pressed,
               ]}
             >
-              {isSubmittingPresensi ? (
+              {sedangMengirim ? (
                 <ActivityIndicator color={colors.bg} />
               ) : (
                 <Text
