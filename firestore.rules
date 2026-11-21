@@ -139,7 +139,8 @@ service cloud.firestore {
         && data.cosLat >= -1
         && data.cosLat <= 1
         && isNumber(data.radiusMeter)
-        && data.radiusMeter > 0
+        && data.radiusMeter >= 25
+        && data.radiusMeter <= 500
         && data.aktif is bool;
     }
 
@@ -528,9 +529,8 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.updatedAt == request.time
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'nama', 'deskripsi', 'lat', 'lng', 'cosLat',
-          'radiusMeter', 'aktif', 'updatedAt'
-        ]);
+        'deskripsi', 'lat', 'lng', 'cosLat', 'radiusMeter', 'updatedAt'
+      ]);
 
       allow delete: if false;
     }
