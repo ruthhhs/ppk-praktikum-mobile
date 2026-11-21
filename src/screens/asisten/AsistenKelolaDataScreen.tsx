@@ -26,6 +26,7 @@ import {
   addDocument,
   firestoreRefs,
   listenCollection,
+  pantauLaboratorium,
   readCollection,
   readDocument,
   removeDocument,
@@ -34,8 +35,7 @@ import {
   updateDocument,
 } from "../../services/firebase/firestore";
 import { useDaftarPraktikan } from "./useDaftarPraktikan";
-import { pantauLaboratorium } from "../../services/peta/laboratoriumPeta";
-import type { LabPeta } from "../../services/peta/tipe";
+import type { LabPeta } from "../../components/peta/PetaLab";
 
 type DataKind = "praktikum" | "kelas" | "peserta" | "jadwal";
 type RecordItem = { id: string; aktif: boolean };
@@ -275,7 +275,7 @@ export default function AsistenKelolaDataScreen() {
   const [labs, setLabs] = useState<LabPeta[] | null>(null);
 
   useEffect(
-    () => pantauLaboratorium("asisten", setLabs, () => setLabs(null)),
+    () => pantauLaboratorium(setLabs, () => setLabs(null)),
     [],
   );
 
@@ -284,6 +284,8 @@ export default function AsistenKelolaDataScreen() {
       setLoading(false);
       return undefined;
     }
+
+    const uid = user.uid;
 
     setLoading(true);
     setError("");
@@ -328,44 +330,57 @@ export default function AsistenKelolaDataScreen() {
       ),
     );
     unsubscribers.push(
-      listenCollection(
-        firestoreRefs.kelas(),
-        (items) => {
-          setKelas(items.map((item) => ({ ...item })));
-          const activeIds = new Set(items.map((item) => item.id));
-          for (const [kelasId, unsubscribe] of participantUnsubscribers) {
-            if (!activeIds.has(kelasId)) {
-              unsubscribe();
-              participantUnsubscribers.delete(kelasId);
-              participantsByClass.delete(kelasId);
-            }
-          }
-          for (const item of items) {
-            if (participantUnsubscribers.has(item.id)) continue;
-            participantUnsubscribers.set(
-              item.id,
-              listenCollection(
-                firestoreRefs.peserta(item.id),
-                (participantItems) => {
-                  participantsByClass.set(
-                    item.id,
-                    participantItems.map((participant) => ({
-                      id: participant.id,
-                      uid: participant.uid,
-                      kelasId: item.id,
-                      aktif: participant.aktif,
-                    })),
-                  );
-                  setPeserta(Array.from(participantsByClass.values()).flat());
-                },
-                onError,
-              ),
-            );
-          }
-        },
-        onError,
-      ),
-    );
+  listenCollection(
+    firestoreRefs.kelas(),
+    (items) => {
+      const kelasSaya = items.filter(
+        (item) =>
+          Array.isArray(item.asistenUids) &&
+          item.asistenUids.includes(uid),
+      );
+
+      setKelas(kelasSaya.map((item) => ({ ...item })));
+
+      const activeIds = new Set(kelasSaya.map((item) => item.id));
+
+      for (const [kelasId, unsubscribe] of participantUnsubscribers) {
+        if (!activeIds.has(kelasId)) {
+          unsubscribe();
+          participantUnsubscribers.delete(kelasId);
+          participantsByClass.delete(kelasId);
+        }
+      }
+
+      setPeserta(Array.from(participantsByClass.values()).flat());
+
+      for (const item of kelasSaya) {
+        if (participantUnsubscribers.has(item.id)) continue;
+
+        participantUnsubscribers.set(
+          item.id,
+          listenCollection(
+            firestoreRefs.peserta(item.id),
+            (participantItems) => {
+              participantsByClass.set(
+                item.id,
+                participantItems.map((participant) => ({
+                  id: participant.id,
+                  uid: participant.uid,
+                  kelasId: item.id,
+                  aktif: participant.aktif,
+                })),
+              );
+
+              setPeserta(Array.from(participantsByClass.values()).flat());
+            },
+            onError,
+          ),
+        );
+      }
+    },
+    onError,
+  ),
+);
 
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
@@ -917,7 +932,7 @@ export default function AsistenKelolaDataScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.back()}
+          onPress={() => router.replace("/asisten/jadwal")}
           style={styles.back}
         >
           <Text style={styles.backArrow}>‹</Text>

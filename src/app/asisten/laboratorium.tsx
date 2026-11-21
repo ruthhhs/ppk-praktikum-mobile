@@ -1,5 +1,5 @@
-import TempScreen from "../../screens/TempScreen";
+import KelolaLaboratoriumScreen from "../../screens/asisten/KelolaLaboratoriumScreen";
 
 export default function AsistenLaboratoriumRoute() {
-  return <TempScreen title="Kelola Laboratorium" />;
+  return <KelolaLaboratoriumScreen />;
 }

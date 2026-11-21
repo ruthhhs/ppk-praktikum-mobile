@@ -12,6 +12,7 @@ import { useLokasi } from '@/hooks/useLokasi';
 import {
   pantauLaboratorium,
   pantauLaboratoriumAktif,
+  pastikanLaboratoriumTetap,
   type WithId,
 } from '@/services/firebase/firestore';
 import {
@@ -64,21 +65,42 @@ export default function PetaScreen({ peran }: { peran: Role }) {
   const [labTerpilihId, setLabTerpilihId] = useState<string | null>(null);
   const [sekarang, setSekarang] = useState(() => new Date());
 
-  // Daftar lab (real-time).
-  useEffect(() => {
-    if (!uid) return undefined;
-    const pantau =
-      peran === 'asisten' ? pantauLaboratorium : pantauLaboratoriumAktif;
-    return pantau(
-      (items) => setHasilLab({ kunci: percobaan, items, galat: '' }),
-      (error) =>
-        setHasilLab({
-          kunci: percobaan,
-          items: [],
-          galat: pesanGalat(error, 'laboratorium'),
-        }),
-    );
-  }, [uid, peran, percobaan]);
+// Daftar lab (real-time). Asisten juga memastikan dokumen lab tetap tersedia.
+useEffect(() => {
+  if (!uid) return undefined;
+
+  let masihTerpasang = true;
+
+  const pantau =
+    peran === 'asisten' ? pantauLaboratorium : pantauLaboratoriumAktif;
+
+  const berhentiPantau = pantau(
+    (items) => setHasilLab({ kunci: percobaan, items, galat: '' }),
+    (error) =>
+      setHasilLab({
+        kunci: percobaan,
+        items: [],
+        galat: pesanGalat(error, 'laboratorium'),
+      }),
+  );
+
+  if (peran === 'asisten') {
+    void pastikanLaboratoriumTetap().catch((error) => {
+      if (!masihTerpasang) return;
+
+      setHasilLab({
+        kunci: percobaan,
+        items: [],
+        galat: pesanGalat(error, 'laboratorium'),
+      });
+    });
+  }
+
+  return () => {
+    masihTerpasang = false;
+    berhentiPantau();
+  };
+}, [uid, peran, percobaan]);
 
   // Data aktivitas (real-time, dibatasi hak baca).
   useEffect(() => {
