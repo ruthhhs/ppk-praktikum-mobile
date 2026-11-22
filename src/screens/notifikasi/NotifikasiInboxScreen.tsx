@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   FlatList,
   Pressable,
   StyleSheet,
@@ -51,18 +52,19 @@ function tentukanTujuanNotifikasi(
   role: Role | null,
 ): Href {
   const peran = role === 'asisten' ? 'asisten' : 'praktikan';
+  const sesiId = item.sesiId?.trim() ?? '';
 
-  if (item.tipe === 'sesi_dibuka' && item.sesiId) {
+  if (item.tipe === 'sesi_dibuka' && sesiId) {
     if (peran === 'praktikan') {
-      return `/praktikan/presensi/${encodeURIComponent(item.sesiId)}` as Href;
+      return `/praktikan/presensi/${encodeURIComponent(sesiId)}` as Href;
     }
-    return `/asisten/detail-sesi?sesiId=${encodeURIComponent(item.sesiId)}` as Href;
+    return `/asisten/detail-sesi?sesiId=${encodeURIComponent(sesiId)}` as Href;
   }
 
   if (item.tipe === 'izin_diterima' || item.tipe === 'izin_ditolak') {
     if (peran === 'praktikan') {
-      if (item.sesiId) {
-        return `/praktikan/detail-sesi?sesiId=${encodeURIComponent(item.sesiId)}` as Href;
+      if (sesiId) {
+        return `/praktikan/detail-sesi?sesiId=${encodeURIComponent(sesiId)}` as Href;
       }
       return '/praktikan/izin' as Href;
     }
@@ -73,8 +75,8 @@ function tentukanTujuanNotifikasi(
     return (peran === 'asisten' ? '/asisten/jadwal' : '/praktikan/jadwal') as Href;
   }
 
-  if (item.sesiId) {
-    return `/${peran}/detail-sesi?sesiId=${encodeURIComponent(item.sesiId)}` as Href;
+  if (sesiId) {
+    return `/${peran}/detail-sesi?sesiId=${encodeURIComponent(sesiId)}` as Href;
   }
 
   return `/${peran}/jadwal` as Href;
@@ -92,8 +94,32 @@ export default function NotifikasiInboxScreen() {
     items: NotifikasiDenganId[];
     error: string | null;
   } | null>(null);
+  const appStateRef = useRef(AppState.currentState);
 
   const uid = user?.uid ?? null;
+
+  // Periksa ulang izin & pendaftaran push saat pengguna kembali dari Pengaturan perangkat
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const sebelumnyaTidakAktif =
+        appStateRef.current === 'background' ||
+        appStateRef.current === 'inactive';
+      appStateRef.current = nextState;
+
+      if (
+        sebelumnyaTidakAktif &&
+        nextState === 'active' &&
+        !perangkatTerdaftar &&
+        statusIzin !== 'tidak_tersedia'
+      ) {
+        void mintaIzin();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [mintaIzin, perangkatTerdaftar, statusIzin]);
 
   useEffect(() => {
     if (!uid) return;
