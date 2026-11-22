@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -33,6 +34,7 @@ import {
   BATAS_AKURASI_PRESENSI_METER,
   kirimPresensi,
 } from '@/services/presensi';
+import { QrPresensiScannerModal } from '@/components/qr';
 import StatusBadge from '@/components/ui/StatusBadge';
 import BannerKondisiPresensi, {
   BannerJaringanOffline,
@@ -119,6 +121,7 @@ export default function PresensiPraktikanScreen() {
     formState.sesiKey === sesiKeyAktif ? formState.pesanErrorInput : null;
 
   const [pesanJaringan, setPesanJaringan] = useState<string | null>(null);
+  const [scannerQrTerbuka, setScannerQrTerbuka] = useState(false);
   const [dataSuksesModal, setDataSuksesModal] =
     useState<DataSuksesPresensi | null>(null);
   const [alasanInfoModal, setAlasanInfoModal] =
@@ -417,7 +420,7 @@ export default function PresensiPraktikanScreen() {
     });
   };
 
-  const handleKirimPresensi = async () => {
+  const handleKirimPresensi = async (kodeOverride?: string) => {
     if (!isAuthenticated) {
       setAlasanInfoModal('belum_login');
       return;
@@ -455,12 +458,14 @@ export default function PresensiPraktikanScreen() {
       return;
     }
 
+    const kodeDipakai = kodeOverride ?? kode;
+
     setSedangMengirim(true);
     setPesanJaringan(null);
     try {
       const hasil = await kirimPresensi(
         sesiAktif.id,
-        kode,
+        kodeDipakai,
         {
           lat: koordinat.lat,
           lng: koordinat.lng,
@@ -839,9 +844,52 @@ export default function PresensiPraktikanScreen() {
                 </Text>
               )}
             </Pressable>
+
+            <View style={styles.qrDividerRow}>
+              <View style={styles.qrDividerLine} />
+              <Text style={styles.qrDividerText}>atau</Text>
+              <View style={styles.qrDividerLine} />
+            </View>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Pindai QR Presensi"
+              accessibilityState={{ disabled: tombolKirimNonaktif }}
+              disabled={tombolKirimNonaktif}
+              onPress={() => setScannerQrTerbuka(true)}
+              style={({ pressed }) => [
+                styles.qrButton,
+                tombolKirimNonaktif && styles.disabledButton,
+                pressed && !tombolKirimNonaktif && styles.pressed,
+              ]}
+            >
+              <Ionicons
+                name="qr-code-outline"
+                size={18}
+                color={colors.text}
+              />
+              <Text style={styles.secondaryButtonText}>
+                Pindai QR Presensi
+              </Text>
+            </Pressable>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <QrPresensiScannerModal
+        visible={scannerQrTerbuka}
+        expectedSesiId={sesiAktif.id}
+        onClose={() => setScannerQrTerbuka(false)}
+        onBerhasilPindai={({ kode: kodeQr }) => {
+          setScannerQrTerbuka(false);
+          setFormState({
+            sesiKey: sesiKeyAktif,
+            kode: kodeQr,
+            pesanErrorInput: null,
+          });
+          void handleKirimPresensi(kodeQr);
+        }}
+      />
 
       <PresensiSuccessModal
         visible={Boolean(dataSuksesModal)}
@@ -1126,6 +1174,34 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 13,
     fontWeight: '700',
+  },
+  qrDividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  qrDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  qrDividerText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  qrButton: {
+    minHeight: 46,
+    borderRadius: 14,
+    backgroundColor: colors.bg,
+    borderColor: colors.border,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
   disabledButton: {
     opacity: 0.45,
