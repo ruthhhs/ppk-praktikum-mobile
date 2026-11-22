@@ -792,9 +792,9 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
             const items: JadwalFirestoreDoc[] = [];
             for (const docSnap of docs) {
               const data = docSnap as unknown as Record<string, unknown>;
-              if (data.aktif === false) {
-                continue;
-              }
+              // Jangan buang jadwal dengan aktif === false karena pembukaan/penutupan sesi
+              // menonaktifkan jadwal asalnya (bukaSesiDanNonaktifkanJadwal), sedangkan sesi
+              // tetap membutuhkan jadwalId untuk menampilkan pertemuanKe, tanggal, jam, dan lokasi.
               items.push({
                 id: docSnap.id,
                 kelasId:
@@ -838,6 +838,9 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
             const items: SesiFirestoreRaw[] = [];
             for (const docSnap of docs) {
               const data = docSnap as unknown as Record<string, unknown>;
+              if (data.aktif === false) {
+                continue;
+              }
               const rawStatus = data.status;
               const status: SesiStatus =
                 rawStatus === 'dibuka' ||

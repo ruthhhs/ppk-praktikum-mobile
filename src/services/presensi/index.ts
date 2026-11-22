@@ -1,4 +1,5 @@
 export {
+  apakahDalamRadiusLab,
   BATAS_AKURASI_PRESENSI_METER,
   kirimPresensi,
   type AlasanGagalKirimPresensi,

@@ -11,6 +11,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import {
+  isFirebaseConfigured,
+  isNativeFirebaseConfigured,
+} from '../../services/firebase';
+import {
   ambilNamaDepan,
   ambilNamaPraktikum,
   ambilTanggalHariIniJakarta,
@@ -276,9 +280,12 @@ export default function PraktikanJadwalScreen() {
         return true;
       }
       if (filterAktif === 'hari_ini') {
-        return (
-          item.tanggal === tanggalJakarta || item.tanggal === TANGGAL_HARI_INI
-        );
+        const isFirestoreAktif =
+          isFirebaseConfigured || isNativeFirebaseConfigured;
+        return isFirestoreAktif
+          ? item.tanggal === tanggalJakarta
+          : item.tanggal === tanggalJakarta ||
+              item.tanggal === TANGGAL_HARI_INI;
       }
       return item.status === filterAktif;
     });
@@ -292,10 +299,17 @@ export default function PraktikanJadwalScreen() {
     });
   }, [filterAktif, sesi, tanggalJakarta]);
 
-  const sesiDibuka = useMemo(
-    () => sesi.find((item) => item.status === 'dibuka'),
-    [sesi],
-  );
+  const sesiDibuka = useMemo(() => {
+    const daftarTerbuka = sesi.filter((item) => item.status === 'dibuka');
+    if (daftarTerbuka.length === 0) return undefined;
+    return (
+      daftarTerbuka.find(
+        (item) =>
+          !petaPresensiSaya.has(item.id) &&
+          pengajuanIzinMap[item.id]?.status !== 'diterima',
+      ) ?? daftarTerbuka[0]
+    );
+  }, [pengajuanIzinMap, petaPresensiSaya, sesi]);
 
   const labelKelasAktif = useMemo(() => {
     const unikSesi = Array.from(new Set(sesi.map((item) => item.kelas))).sort();

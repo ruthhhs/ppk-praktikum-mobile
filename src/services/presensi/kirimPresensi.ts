@@ -79,6 +79,31 @@ function dalamRadiusBidangDatar(
   );
 }
 
+export function apakahDalamRadiusLab(
+  lokasi: { lat: number; lng: number },
+  lab: { lat: number; lng: number; cosLat?: number; radiusMeter: number },
+): { dalamRadius: boolean; jarakMeter: number } {
+  const jarakMeter = hitungJarakMeter(
+    { lat: lokasi.lat, lng: lokasi.lng },
+    { lat: lab.lat, lng: lab.lng },
+  );
+  const cosLat =
+    typeof lab.cosLat === 'number' && Number.isFinite(lab.cosLat)
+      ? lab.cosLat
+      : Math.cos((lab.lat * Math.PI) / 180);
+
+  const dalamRadius =
+    jarakMeter <= lab.radiusMeter &&
+    dalamRadiusBidangDatar(lokasi, {
+      lat: lab.lat,
+      lng: lab.lng,
+      cosLat,
+      radiusMeter: lab.radiusMeter,
+    });
+
+  return { dalamRadius, jarakMeter };
+}
+
 function apakahErrorJaringan(err: unknown): boolean {
   const code = ((err as { code?: string })?.code ?? '').toLowerCase();
   const message = ((err as { message?: string })?.message ?? '').toLowerCase();
@@ -251,24 +276,10 @@ export async function kirimPresensi(
     };
   }
 
-  const jarakMeter = hitungJarakMeter(
-    { lat: lokasi.lat, lng: lokasi.lng },
-    { lat: labAktif.lat, lng: labAktif.lng },
+  const { dalamRadius: diDalamRadius, jarakMeter } = apakahDalamRadiusLab(
+    lokasi,
+    labAktif,
   );
-
-  const cosLat =
-    typeof labAktif.cosLat === 'number' && Number.isFinite(labAktif.cosLat)
-      ? labAktif.cosLat
-      : Math.cos((labAktif.lat * Math.PI) / 180);
-
-  const diDalamRadius =
-    jarakMeter <= labAktif.radiusMeter &&
-    dalamRadiusBidangDatar(lokasi, {
-      lat: labAktif.lat,
-      lng: labAktif.lng,
-      cosLat,
-      radiusMeter: labAktif.radiusMeter,
-    });
 
   if (!diDalamRadius) {
     return {

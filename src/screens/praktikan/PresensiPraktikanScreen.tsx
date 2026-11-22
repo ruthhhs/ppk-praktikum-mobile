@@ -28,8 +28,8 @@ import {
   isFirebaseConfigured,
   isNativeFirebaseConfigured,
 } from '@/services/firebase';
-import { hitungJarakMeter } from '@/utils/hitungJarakMeter';
 import {
+  apakahDalamRadiusLab,
   BATAS_AKURASI_PRESENSI_METER,
   kirimPresensi,
 } from '@/services/presensi';
@@ -96,14 +96,28 @@ export default function PresensiPraktikanScreen() {
 
   const { status: statusLokasi, koordinat, mintaIzin, segarkan } = useLokasi();
 
+  const [labRetryKey, setLabRetryKey] = useState(0);
   const [labRemoteState, setLabRemoteState] = useState<{
     labId: string;
+    retryKey: number;
     data: LaboratoriumDenganId | null;
     error: string | null;
   } | null>(null);
 
-  const [kode, setKode] = useState('');
-  const [pesanErrorInput, setPesanErrorInput] = useState<string | null>(null);
+  const [formState, setFormState] = useState<{
+    sesiKey: string;
+    kode: string;
+    pesanErrorInput: string | null;
+  }>({
+    sesiKey: paramSesiId ?? '',
+    kode: '',
+    pesanErrorInput: null,
+  });
+  const sesiKeyAktif = paramSesiId ?? '';
+  const kode = formState.sesiKey === sesiKeyAktif ? formState.kode : '';
+  const pesanErrorInput =
+    formState.sesiKey === sesiKeyAktif ? formState.pesanErrorInput : null;
+
   const [pesanJaringan, setPesanJaringan] = useState<string | null>(null);
   const [dataSuksesModal, setDataSuksesModal] =
     useState<DataSuksesPresensi | null>(null);
@@ -111,10 +125,10 @@ export default function PresensiPraktikanScreen() {
     useState<AlasanPenolakanPresensi | null>(null);
   const appStateRef = useRef(AppState.currentState);
 
-  // Mulai pemeriksaan lokasi saat halaman dibuka
+  // Minta izin dan mulai pemeriksaan lokasi saat halaman dibuka (FR-7)
   useEffect(() => {
-    void segarkan();
-  }, [segarkan]);
+    void mintaIzin();
+  }, [mintaIzin]);
 
   // Otomatis periksa ulang lokasi saat pengguna kembali dari Pengaturan perangkat
   // (mis. setelah menyalakan GPS atau memberikan izin lokasi)
@@ -158,6 +172,7 @@ export default function PresensiPraktikanScreen() {
       (docData) => {
         setLabRemoteState({
           labId: labIdAktif,
+          retryKey: labRetryKey,
           data: docData ? { ...docData, id: labIdAktif } : null,
           error: null,
         });
@@ -165,6 +180,7 @@ export default function PresensiPraktikanScreen() {
       () => {
         setLabRemoteState({
           labId: labIdAktif,
+          retryKey: labRetryKey,
           data: null,
           error:
             'Gagal memuat data lokasi laboratorium. Periksa koneksi internet lalu coba lagi.',
@@ -175,7 +191,7 @@ export default function PresensiPraktikanScreen() {
     return () => {
       unsubscribe();
     };
-  }, [labIdAktif]);
+  }, [labIdAktif, labRetryKey]);
 
   const { labData, labLoading, labError } = useMemo(() => {
     if (!labIdAktif) {
@@ -200,7 +216,11 @@ export default function PresensiPraktikanScreen() {
       };
     }
 
-    if (!labRemoteState || labRemoteState.labId !== labIdAktif) {
+    if (
+      !labRemoteState ||
+      labRemoteState.labId !== labIdAktif ||
+      labRemoteState.retryKey !== labRetryKey
+    ) {
       return { labData: null, labLoading: true, labError: null };
     }
 
@@ -209,7 +229,7 @@ export default function PresensiPraktikanScreen() {
       labLoading: false,
       labError: labRemoteState.error,
     };
-  }, [labIdAktif, labRemoteState]);
+  }, [labIdAktif, labRemoteState, labRetryKey]);
 
   const presensiSaya = useMemo(() => {
     if (!sesiAktif) return undefined;
@@ -224,13 +244,11 @@ export default function PresensiPraktikanScreen() {
     return pengajuanIzinMap[sesiAktif.id];
   }, [pengajuanIzinMap, sesiAktif]);
 
-  const jarakMeter = useMemo(() => {
+  const hasilRadius = useMemo(() => {
     if (!koordinat || !labData) return null;
-    return hitungJarakMeter(
-      { lat: koordinat.lat, lng: koordinat.lng },
-      { lat: labData.lat, lng: labData.lng },
-    );
+    return apakahDalamRadiusLab(koordinat, labData);
   }, [koordinat, labData]);
+  const jarakMeter = hasilRadius?.jarakMeter ?? null;
 
   const evaluasiLokasi = useMemo((): {
     valid: boolean;
@@ -344,7 +362,7 @@ export default function PresensiPraktikanScreen() {
       };
     }
 
-    if (jarakMeter === null || !labData) {
+    if (!hasilRadius || !labData) {
       return {
         valid: false,
         jenis: 'menunggu_koordinat',
@@ -353,12 +371,12 @@ export default function PresensiPraktikanScreen() {
       };
     }
 
-    if (jarakMeter > labData.radiusMeter) {
+    if (!hasilRadius.dalamRadius) {
       return {
         valid: false,
         jenis: 'di_luar_radius',
         judul: 'Di luar radius laboratorium',
-        pesan: `Jarakmu saat ini ${formatMeter(jarakMeter)}, melebihi radius ${labData.radiusMeter} m dari ${labData.nama}.`,
+        pesan: `Jarakmu saat ini ${formatMeter(hasilRadius.jarakMeter)}, melebihi radius ${labData.radiusMeter} m dari ${labData.nama}.`,
       };
     }
 
@@ -369,7 +387,7 @@ export default function PresensiPraktikanScreen() {
       pesan: `Kamu berada dalam radius ${labData.radiusMeter} m dari ${labData.nama}.`,
     };
   }, [
-    jarakMeter,
+    hasilRadius,
     koordinat,
     labData,
     labError,
@@ -392,10 +410,11 @@ export default function PresensiPraktikanScreen() {
 
   const handleUbahKode = (teks: string) => {
     const hanyaAngka = teks.replace(/\D/g, '').slice(0, 4);
-    setKode(hanyaAngka);
-    if (pesanErrorInput) {
-      setPesanErrorInput(null);
-    }
+    setFormState({
+      sesiKey: sesiKeyAktif,
+      kode: hanyaAngka,
+      pesanErrorInput: null,
+    });
   };
 
   const handleKirimPresensi = async () => {
@@ -427,9 +446,12 @@ export default function PresensiPraktikanScreen() {
       return;
     }
     if (!koordinat || statusLokasi !== 'siap') {
-      setPesanErrorInput(
-        'Lokasi perangkat belum siap. Pastikan GPS aktif lalu segarkan lokasi.',
-      );
+      setFormState((prev) => ({
+        sesiKey: sesiKeyAktif,
+        kode: prev.sesiKey === sesiKeyAktif ? prev.kode : '',
+        pesanErrorInput:
+          'Lokasi perangkat belum siap. Pastikan GPS aktif lalu segarkan lokasi.',
+      }));
       return;
     }
 
@@ -464,7 +486,11 @@ export default function PresensiPraktikanScreen() {
           hasil.reason === 'lokasi_tidak_tersedia' ||
           hasil.reason === 'sesi_tidak_ditemukan'
         ) {
-          setPesanErrorInput(hasil.pesan);
+          setFormState((prev) => ({
+            sesiKey: sesiKeyAktif,
+            kode: prev.sesiKey === sesiKeyAktif ? prev.kode : '',
+            pesanErrorInput: hasil.pesan,
+          }));
           return;
         }
 
@@ -479,8 +505,11 @@ export default function PresensiPraktikanScreen() {
         waktu: hasil.waktuIso,
       });
 
-      setKode('');
-      setPesanErrorInput(null);
+      setFormState({
+        sesiKey: sesiKeyAktif,
+        kode: '',
+        pesanErrorInput: null,
+      });
       setDataSuksesModal({
         namaPraktikan: currentUser.nama,
         nim: currentUser.nim,
@@ -601,6 +630,7 @@ export default function PresensiPraktikanScreen() {
 
   const handleCobaLagiJaringan = () => {
     setPesanJaringan(null);
+    setLabRetryKey((prev) => prev + 1);
     muatUlangData();
     void segarkan();
   };
