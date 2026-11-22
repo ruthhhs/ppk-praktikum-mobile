@@ -8,6 +8,10 @@ export type AlasanPenolakanPresensi =
   | 'belum_dibuka'
   | 'sudah_ditutup'
   | 'belum_login'
+  | 'di_luar_radius'
+  | 'akurasi_buruk'
+  | 'lokasi_mock'
+  | 'lab_tidak_aktif'
   | 'gagal_jaringan';
 
 export type DataSuksesPresensi = {
@@ -17,6 +21,8 @@ export type DataSuksesPresensi = {
   pertemuanKe: number;
   kelas: string;
   waktuIso: string;
+  jarakMeter?: number;
+  akurasi?: number;
 };
 
 function formatWaktuLengkap(waktuIso: string): string {
@@ -109,6 +115,20 @@ export function PresensiSuccessModal({
                 {formatWaktuLengkap(data.waktuIso)}
               </Text>
             </View>
+
+            {typeof data.jarakMeter === 'number' &&
+            Number.isFinite(data.jarakMeter) ? (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Jarak ke Lab</Text>
+                <Text style={styles.summaryValue}>
+                  {Math.round(data.jarakMeter)} m
+                  {typeof data.akurasi === 'number' &&
+                  Number.isFinite(data.akurasi)
+                    ? ` (akurasi ±${Math.round(data.akurasi)} m)`
+                    : ''}
+                </Text>
+              </View>
+            ) : null}
           </View>
 
           <Pressable
@@ -161,6 +181,30 @@ const INFO_PENOLAKAN: Record<
     judul: 'Akun Belum Terautentikasi',
     deskripsi:
       'Silakan masuk menggunakan akun Praktikan terlebih dahulu sebelum melakukan presensi.',
+  },
+  di_luar_radius: {
+    badge: 'DI LUAR RADIUS',
+    judul: 'Lokasi di Luar Radius Lab',
+    deskripsi:
+      'Posisimu saat ini berada di luar radius laboratorium yang diizinkan. Dekati ruang laboratorium lalu segarkan lokasi sebelum mencoba kembali.',
+  },
+  akurasi_buruk: {
+    badge: 'AKURASI RENDAH',
+    judul: 'Akurasi GPS Belum Memadai',
+    deskripsi:
+      'Akurasi lokasi perangkat saat ini melebihi batas 50 meter. Pindah ke area dengan sinyal GPS lebih baik lalu segarkan lokasi.',
+  },
+  lokasi_mock: {
+    badge: 'LOKASI TIDAK VALID',
+    judul: 'Lokasi Palsu Terdeteksi',
+    deskripsi:
+      'Perangkat terdeteksi menggunakan lokasi palsu (mock location). Nonaktifkan aplikasi lokasi palsu lalu coba lagi.',
+  },
+  lab_tidak_aktif: {
+    badge: 'LAB TIDAK AKTIF',
+    judul: 'Laboratorium Tidak Aktif',
+    deskripsi:
+      'Laboratorium yang terhubung dengan kelas ini sedang tidak aktif atau belum ditentukan. Hubungi asisten praktikum.',
   },
   gagal_jaringan: {
     badge: 'GANGGUAN KONEKSI',
