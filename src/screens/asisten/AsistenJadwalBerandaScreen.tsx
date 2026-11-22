@@ -3,9 +3,6 @@ import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,24 +19,8 @@ import {
 } from "./AsistenWorkflowStore";
 
 type StatusSesi = SesiAsisten["status"];
+type FilterSesi = "semua" | StatusSesi;
 type Sesi = SesiAsisten;
-
-// Data yang ditampilkan kartu; dipenuhi oleh Sesi maupun JadwalSiap.
-type InfoSesi = Pick<
-  Sesi,
-  "praktikum" | "pertemuanKe" | "kelas" | "lab" | "tanggal" | "jamMulai" | "jamSelesai"
->;
-
-// Filter daftar sesi; sesi "dibuka" punya kartu sendiri di atas.
-type FilterSesi = Exclude<StatusSesi, "dibuka">;
-
-type Baris =
-  | { tipe: "jadwal"; key: string; jadwal: JadwalSiap }
-  | { tipe: "sesiBelum"; key: string; sesi: Sesi }
-  | { tipe: "ditutup"; key: string; sesi: Sesi };
-
-// Sesuaikan dengan route layar rekap yang ada di src/app/asisten/.
-const RUTE_REKAP = "/asisten/rekap-sesi";
 
 const WARNA = { ...colors, soft: "#F5F8F6" };
 
@@ -50,13 +31,10 @@ const LABEL_STATUS: Record<StatusSesi, string> = {
 };
 
 const LABEL_FILTER: Record<FilterSesi, string> = {
+  semua: "Semua",
+  dibuka: "Dibuka",
   belum_dibuka: "Belum dibuka",
   ditutup: "Ditutup",
-};
-
-const TEKS_KOSONG: Record<FilterSesi, string> = {
-  belum_dibuka: "Tidak ada jadwal aktif. Buat jadwal di Kelola data.",
-  ditutup: "Belum ada sesi yang ditutup.",
 };
 
 function formatTanggal(tanggal?: string) {
@@ -111,170 +89,17 @@ function FilterButton({
   );
 }
 
-function Field({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-  keyboardType,
-}: {
-  label: string;
-  value: string;
-  onChangeText: (value: string) => void;
-  placeholder: string;
-  keyboardType?: "default" | "numeric";
-}) {
-  return (
-    <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput
-        accessibilityLabel={label}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={WARNA.textMuted}
-        keyboardType={keyboardType}
-        style={styles.input}
-      />
-    </View>
-  );
-}
-
-/** Isi kartu yang sama untuk sesi belum dibuka dan ditutup. */
-function IsiKartu({ info }: { info: InfoSesi }) {
-  return (
-    <>
-      <Text style={styles.courseName}>{info.praktikum}</Text>
-      <Text style={styles.sessionMeta}>
-        Pertemuan {info.pertemuanKe}
-        <Text style={styles.metaSeparator}> · </Text>
-        Kelas {info.kelas}
-      </Text>
-
-      <View style={styles.infoDivider} />
-
-      <View style={styles.infoGrid}>
-        <View style={styles.infoBlock}>
-          <Text style={styles.infoLabel}>WAKTU</Text>
-          <Text style={styles.infoValue}>{formatTanggal(info.tanggal)}</Text>
-          <Text style={styles.infoSubValue}>
-            {info.jamMulai}–{info.jamSelesai}
-          </Text>
-        </View>
-
-        <View style={styles.infoBlock}>
-          <Text style={styles.infoLabel}>LOKASI</Text>
-          <Text style={styles.infoValue}>Kelas {info.kelas}</Text>
-          <Text style={styles.infoSubValue}>{info.lab}</Text>
-        </View>
-      </View>
-    </>
-  );
-}
-
-/** Sesi yang sedang dibuka: memakai gaya kartu ringkasan agar menonjol. */
-function KartuDibuka({ sesi }: { sesi: Sesi }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Buka detail sesi yang sedang dibuka: ${sesi.praktikum}, pertemuan ${sesi.pertemuanKe}`}
-      onPress={() =>
-        router.push({
-          pathname: "/asisten/detail-sesi",
-          params: { sesiId: sesi.id },
-        })
-      }
-      style={({ pressed }) => [
-        styles.summaryCard,
-        pressed && styles.sessionCardPressed,
-      ]}
-    >
-      <View style={styles.summaryHeading}>
-        <Text style={styles.summaryEyebrow}>SESI DIBUKA SAAT INI</Text>
-        <Text style={styles.summaryPeriod}>Dibuka</Text>
-      </View>
-
-      <Text style={styles.summaryTitle}>{sesi.praktikum}</Text>
-      <Text style={styles.summaryMeta}>
-        Pertemuan {sesi.pertemuanKe} · Kelas {sesi.kelas}
-      </Text>
-
-      <View style={styles.summaryStats}>
-        <View style={styles.summaryStat}>
-          <Text style={styles.summaryValue}>
-            {sesi.jamMulai}–{sesi.jamSelesai}
-          </Text>
-          <Text style={styles.summaryLabel}>Waktu</Text>
-        </View>
-
-        <View style={styles.summaryDivider} />
-
-        <View style={styles.summaryStat}>
-          <Text style={styles.summaryValue} numberOfLines={1}>
-            {sesi.lab}
-          </Text>
-          <Text style={styles.summaryLabel}>Lokasi</Text>
-        </View>
-
-        <View style={styles.summaryDivider} />
-
-        <View style={styles.summaryStat}>
-          <Text style={styles.summaryValue}>
-            {sesi.hadir}/{sesi.total}
-          </Text>
-          <Text style={styles.summaryLabel}>Hadir</Text>
-        </View>
-      </View>
-
-      <View style={styles.summaryFooter}>
-        <Text style={styles.summaryLink}>Lihat detail sesi</Text>
-        <Text style={styles.summaryLink}>›</Text>
-      </View>
-    </Pressable>
-  );
-}
-
-/** Kartu belum dibuka: hanya satu aksi, "Buka sesi". */
-function KartuBelumDibuka({
-  info,
-  onBuka,
-}: {
-  info: InfoSesi;
-  onBuka: () => void;
-}) {
-  return (
-    <View style={styles.sessionCard}>
-      <View style={styles.cardTopRow}>
-        <Text style={styles.cardEyebrow}>SESI PRAKTIKUM</Text>
-        <StatusBadge status="belum_dibuka" />
-      </View>
-
-      <IsiKartu info={info} />
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Buka sesi ${info.praktikum}, pertemuan ${info.pertemuanKe}`}
-        onPress={onBuka}
-        style={({ pressed }) => [styles.openButton, pressed && styles.pressed]}
-      >
-        <Text style={styles.openButtonText}>Buka sesi</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-/** Kartu ditutup: ketuk untuk melihat rekap presensi sesi. */
-function KartuDitutup({ sesi }: { sesi: Sesi }) {
+function SessionCard({ sesi }: { sesi: Sesi }) {
   const persentase =
     sesi.total > 0 ? Math.round((sesi.hadir / sesi.total) * 100) : 0;
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Lihat rekap ${sesi.praktikum}, pertemuan ${sesi.pertemuanKe}`}
+      accessibilityLabel={`Buka detail ${sesi.praktikum}, pertemuan ${sesi.pertemuanKe}`}
       onPress={() =>
         router.push({
-          pathname: RUTE_REKAP,
+          pathname: "/asisten/detail-sesi",
           params: { sesiId: sesi.id },
         })
       }
@@ -285,10 +110,33 @@ function KartuDitutup({ sesi }: { sesi: Sesi }) {
     >
       <View style={styles.cardTopRow}>
         <Text style={styles.cardEyebrow}>SESI PRAKTIKUM</Text>
-        <StatusBadge status="ditutup" />
+        <StatusBadge status={sesi.status} />
       </View>
 
-      <IsiKartu info={sesi} />
+      <Text style={styles.courseName}>{sesi.praktikum}</Text>
+      <Text style={styles.sessionMeta}>
+        Pertemuan {sesi.pertemuanKe}
+        <Text style={styles.metaSeparator}> · </Text>
+        Kelas {sesi.kelas}
+      </Text>
+
+      <View style={styles.infoDivider} />
+
+      <View style={styles.infoGrid}>
+        <View style={styles.infoBlock}>
+          <Text style={styles.infoLabel}>WAKTU</Text>
+          <Text style={styles.infoValue}>{formatTanggal(sesi.tanggal)}</Text>
+          <Text style={styles.infoSubValue}>
+            {sesi.jamMulai}–{sesi.jamSelesai}
+          </Text>
+        </View>
+
+        <View style={styles.infoBlock}>
+          <Text style={styles.infoLabel}>LOKASI</Text>
+          <Text style={styles.infoValue}>Kelas {sesi.kelas}</Text>
+          <Text style={styles.infoSubValue}>{sesi.lab}</Text>
+        </View>
+      </View>
 
       <View style={styles.attendanceSection}>
         <View style={styles.attendanceHeading}>
@@ -314,7 +162,7 @@ function KartuDitutup({ sesi }: { sesi: Sesi }) {
       </View>
 
       <View style={styles.cardFooter}>
-        <Text style={styles.detailLink}>Lihat rekap sesi</Text>
+        <Text style={styles.detailLink}>Lihat detail sesi</Text>
         <Text style={styles.detailArrow}>›</Text>
       </View>
     </Pressable>
@@ -322,118 +170,24 @@ function KartuDitutup({ sesi }: { sesi: Sesi }) {
 }
 
 export default function AsistenJadwalBerandaScreen() {
-  const { sesi, pengajuan, jadwalSiap, bukaSesiDariJadwal, loading, error } =
-    useAsistenWorkflowStore();
+  const [filter, setFilter] = useState<FilterSesi>("semua");
+  const { sesi, pengajuan, loading, error } = useAsistenWorkflowStore();
 
-  const [filter, setFilter] = useState<FilterSesi>("belum_dibuka");
-  const [target, setTarget] = useState<JadwalSiap | null>(null);
-  const [kode, setKode] = useState("");
-  const [catatan, setCatatan] = useState("");
-  const [galatForm, setGalatForm] = useState("");
-  const [pesan, setPesan] = useState("");
-  const [sibuk, setSibuk] = useState(false);
+  const sesiTerfilter = useMemo(() => {
+    return sesi
+      .filter((sesi) => filter === "semua" || sesi.status === filter)
+      .sort((a, b) => {
+        if (a.status === "dibuka" && b.status !== "dibuka") return -1;
+        if (a.status !== "dibuka" && b.status === "dibuka") return 1;
+        return a.tanggal.localeCompare(b.tanggal);
+      });
+  }, [filter, sesi]);
 
-  // Normalnya hanya satu sesi dibuka, tetapi Rules tidak membatasinya,
-  // jadi semua sesi berstatus dibuka ditampilkan.
-  const sesiDibuka = useMemo(
-    () => sesi.filter((item) => item.status === "dibuka"),
-    [sesi],
-  );
+  const jumlahDibuka = sesi.filter((sesi) => sesi.status === "dibuka").length;
 
-  const baris = useMemo<Baris[]>(() => {
-    // Sesi belum_dibuka lama yang tidak punya jadwal aktif (data dari form
-    // lama) tetap bisa dibuka lewat halaman detail sesi.
-    const idJadwalSiap = new Set(jadwalSiap.map((j) => j.id));
-    const sesiBelumTerpisah = sesi
-      .filter(
-        (item) =>
-          item.status === "belum_dibuka" &&
-          !(item.jadwalId && idJadwalSiap.has(item.jadwalId)),
-      )
-      .sort(
-        (a, b) =>
-          a.tanggal.localeCompare(b.tanggal) ||
-          a.jamMulai.localeCompare(b.jamMulai),
-      );
-
-    const belumDibuka: Baris[] = [
-      ...jadwalSiap.map(
-        (jadwal): Baris => ({ tipe: "jadwal", key: `j-${jadwal.id}`, jadwal }),
-      ),
-      ...sesiBelumTerpisah.map(
-        (item): Baris => ({ tipe: "sesiBelum", key: `b-${item.id}`, sesi: item }),
-      ),
-    ];
-
-    // Terbaru di atas.
-    const ditutup: Baris[] = sesi
-      .filter((item) => item.status === "ditutup")
-      .sort(
-        (a, b) =>
-          b.tanggal.localeCompare(a.tanggal) ||
-          b.jamMulai.localeCompare(a.jamMulai),
-      )
-      .map(
-        (item): Baris => ({ tipe: "ditutup", key: `t-${item.id}`, sesi: item }),
-      );
-
-    return filter === "belum_dibuka" ? belumDibuka : ditutup;
-  }, [filter, jadwalSiap, sesi]);
-
-  const jumlahIzinMenunggu = pengajuan.filter(
-    (item) => item.status === "menunggu",
+  const jumlahBelumDibuka = sesi.filter(
+    (sesi) => sesi.status === "belum_dibuka",
   ).length;
-
-  function bukaForm(jadwal: JadwalSiap) {
-    setTarget(jadwal);
-    setKode("");
-    setCatatan("");
-    setGalatForm("");
-    setPesan("");
-  }
-
-  async function bukaSesi() {
-    if (!target || sibuk) return;
-    if (!/^\d{4}$/.test(kode)) {
-      setGalatForm("Kode presensi harus tepat 4 digit.");
-      return;
-    }
-    setSibuk(true);
-    const hasil = await bukaSesiDariJadwal(target.id, kode, catatan);
-    setSibuk(false);
-    if (!hasil.success) {
-      setGalatForm(hasil.message);
-      return;
-    }
-    setTarget(null);
-    setPesan(hasil.message);
-  }
-
-  function renderBaris({ item }: { item: Baris }) {
-    switch (item.tipe) {
-      case "jadwal":
-        return (
-          <KartuBelumDibuka
-            info={item.jadwal}
-            onBuka={() => bukaForm(item.jadwal)}
-          />
-        );
-      case "sesiBelum":
-        return (
-          <KartuBelumDibuka
-            info={item.sesi}
-            onBuka={() =>
-              router.push({
-                pathname: "/asisten/detail-sesi",
-                params: { sesiId: item.sesi.id },
-              })
-            }
-          />
-        );
-      case "ditutup":
-        return <KartuDitutup sesi={item.sesi} />;
-    }
-  }
 
   const header = (
     <View>
@@ -468,7 +222,17 @@ export default function AsistenJadwalBerandaScreen() {
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Tinjau ${jumlahIzinMenunggu} pengajuan izin menunggu`}
+            onPress={() => router.push("/asisten/kelola-sesi")}
+            style={({ pressed }) => [
+              styles.manageDataButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.manageDataButtonText}>Sesi</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Tinjau ${pengajuan.filter((item) => item.status === "menunggu").length} pengajuan izin menunggu`}
             onPress={() => router.push("/asisten/izin")}
             style={({ pressed }) => [
               styles.manageDataButton,
@@ -479,35 +243,48 @@ export default function AsistenJadwalBerandaScreen() {
             <Text
               style={[styles.manageDataButtonText, styles.reviewButtonText]}
             >
-              Izin · {jumlahIzinMenunggu}
+              Izin ·{" "}
+              {pengajuan.filter((item) => item.status === "menunggu").length}
             </Text>
           </Pressable>
         </View>
       </View>
 
-      {pesan ? (
-        <Text accessibilityRole="alert" style={styles.notice}>
-          {pesan}
-        </Text>
-      ) : null}
-
-      {sesiDibuka.map((item) => (
-        <KartuDibuka key={item.id} sesi={item} />
-      ))}
-      {!loading && !error && sesiDibuka.length === 0 ? (
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryHeading}>
-            <Text style={styles.summaryEyebrow}>SESI DIBUKA SAAT INI</Text>
-          </View>
-          <Text style={styles.summaryEmpty}>Belum ada sesi yang dibuka.</Text>
+      <View style={styles.summaryCard}>
+        <View style={styles.summaryHeading}>
+          <Text style={styles.summaryEyebrow}>RINGKASAN JADWAL</Text>
+          <Text style={styles.summaryPeriod}>Sprint 3</Text>
         </View>
-      ) : null}
+
+        <View style={styles.summaryStats}>
+          <View style={styles.summaryStat}>
+            <Text style={styles.summaryNumber}>{sesi.length}</Text>
+            <Text style={styles.summaryLabel}>Total sesi</Text>
+          </View>
+
+          <View style={styles.summaryDivider} />
+
+          <View style={styles.summaryStat}>
+            <Text style={styles.summaryNumber}>{jumlahDibuka}</Text>
+            <Text style={styles.summaryLabel}>Sedang dibuka</Text>
+          </View>
+
+          <View style={styles.summaryDivider} />
+
+          <View style={styles.summaryStat}>
+            <Text style={styles.summaryNumber}>{jumlahBelumDibuka}</Text>
+            <Text style={styles.summaryLabel}>Belum dibuka</Text>
+          </View>
+        </View>
+      </View>
 
       <View style={styles.listHeading}>
-        <Text style={styles.listTitle}>Daftar sesi</Text>
-        <Text style={styles.listSubtitle}>
-          Pilih sesi untuk melihat informasi lengkap.
-        </Text>
+        <View>
+          <Text style={styles.listTitle}>Daftar sesi</Text>
+          <Text style={styles.listSubtitle}>
+            Pilih sesi untuk melihat informasi lengkap.
+          </Text>
+        </View>
       </View>
 
       <ScrollView
@@ -530,9 +307,9 @@ export default function AsistenJadwalBerandaScreen() {
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
       <FlatList
-        data={loading || error ? [] : baris}
-        keyExtractor={(item) => item.key}
-        renderItem={renderBaris}
+        data={sesiTerfilter}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => <SessionCard sesi={item} />}
         ListHeaderComponent={header}
         ListEmptyComponent={
           loading ? (
@@ -546,97 +323,20 @@ export default function AsistenJadwalBerandaScreen() {
               <Text style={styles.emptyDescription}>{error}</Text>
             </View>
           ) : (
-            <View style={[styles.emptyState, styles.emptyStateCompact]}>
-              <Text style={styles.emptyDescription}>{TEKS_KOSONG[filter]}</Text>
+            <View style={styles.emptyState}>
+              <View style={styles.emptyMark}>
+                <Text style={styles.emptyMarkText}>—</Text>
+              </View>
+              <Text style={styles.emptyTitle}>Belum ada sesi</Text>
+              <Text style={styles.emptyDescription}>
+                Belum ada jadwal dengan status “{LABEL_FILTER[filter]}”.
+              </Text>
             </View>
           )
         }
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
       />
-
-      <Modal
-        visible={!!target}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setTarget(null)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.modalBackdrop}
-        >
-          <View style={styles.formCard}>
-            <View style={styles.modalHeading}>
-              <View style={styles.modalHeadingText}>
-                <Text style={styles.cardEyebrow}>BUKA SESI</Text>
-                <Text style={styles.modalTitle}>
-                  {target
-                    ? `${target.praktikum} · Pertemuan ${target.pertemuanKe}`
-                    : ""}
-                </Text>
-                <Text style={styles.sessionMeta}>
-                  {target
-                    ? `Kelas ${target.kelas} · ${target.jamMulai}–${target.jamSelesai}`
-                    : ""}
-                </Text>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Tutup"
-                onPress={() => setTarget(null)}
-              >
-                <Text style={styles.modalClose}>×</Text>
-              </Pressable>
-            </View>
-
-            <Field
-              label="Kode presensi (4 digit)"
-              value={kode}
-              onChangeText={(value) =>
-                setKode(value.replace(/\D/g, "").slice(0, 4))
-              }
-              placeholder="1234"
-              keyboardType="numeric"
-            />
-            <Field
-              label="Catatan (opsional)"
-              value={catatan}
-              onChangeText={setCatatan}
-              placeholder="Topik pertemuan"
-            />
-
-            {galatForm ? (
-              <Text accessibilityRole="alert" style={styles.formError}>
-                {galatForm}
-              </Text>
-            ) : null}
-
-            <View style={styles.modalActions}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setTarget(null)}
-                style={[styles.modalButton, styles.cancelButton]}
-              >
-                <Text style={styles.cancelText}>Batal</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                disabled={sibuk}
-                onPress={bukaSesi}
-                style={[
-                  styles.modalButton,
-                  styles.saveButton,
-                  sibuk && styles.pressed,
-                ]}
-              >
-                <Text style={styles.saveText}>
-                  {sibuk ? "Membuka..." : "Buka sesi"}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -738,16 +438,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
   },
-  notice: {
-    color: WARNA.text,
-    backgroundColor: WARNA.highlight,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    marginBottom: 14,
-    fontSize: 12,
-    fontWeight: "700",
-  },
   summaryCard: {
     padding: 17,
     borderRadius: 20,
@@ -758,7 +448,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 14,
+    marginBottom: 18,
   },
   summaryEyebrow: {
     color: "rgba(254, 255, 224, 0.78)",
@@ -775,25 +465,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "700",
   },
-  summaryTitle: {
-    color: WARNA.surface,
-    fontSize: 20,
-    lineHeight: 26,
-    fontWeight: "800",
-    letterSpacing: -0.3,
-  },
-  summaryMeta: {
-    color: "rgba(254, 255, 224, 0.78)",
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 3,
-    marginBottom: 18,
-  },
-  summaryEmpty: {
-    color: "rgba(254, 255, 224, 0.78)",
-    fontSize: 13,
-    lineHeight: 19,
-  },
   summaryStats: {
     flexDirection: "row",
     alignItems: "center",
@@ -801,11 +472,12 @@ const styles = StyleSheet.create({
   summaryStat: {
     flex: 1,
   },
-  summaryValue: {
+  summaryNumber: {
     color: WARNA.surface,
-    fontSize: 15,
-    lineHeight: 20,
+    fontSize: 25,
+    lineHeight: 30,
     fontWeight: "800",
+    letterSpacing: -0.5,
   },
   summaryLabel: {
     color: "rgba(254, 255, 224, 0.78)",
@@ -819,20 +491,21 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(254, 255, 224, 0.22)",
     marginHorizontal: 10,
   },
-  summaryFooter: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    gap: 5,
-    marginTop: 16,
-  },
-  summaryLink: {
-    color: WARNA.highlight,
-    fontSize: 12,
-    fontWeight: "700",
-  },
   listHeading: {
     marginBottom: 14,
+  },
+  listTitle: {
+    color: WARNA.text,
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+  },
+  listSubtitle: {
+    color: WARNA.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 3,
   },
   filters: {
     gap: 8,
@@ -858,19 +531,6 @@ const styles = StyleSheet.create({
   },
   filterTextSelected: {
     color: WARNA.surface,
-  },
-  listTitle: {
-    color: WARNA.text,
-    fontSize: 18,
-    lineHeight: 24,
-    fontWeight: "800",
-    letterSpacing: -0.2,
-  },
-  listSubtitle: {
-    color: WARNA.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 3,
   },
   sessionCard: {
     padding: 16,
@@ -1047,19 +707,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: -2,
   },
-  openButton: {
-    minHeight: 42,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 16,
-    borderRadius: 12,
-    backgroundColor: WARNA.primary,
-  },
-  openButtonText: {
-    color: WARNA.surface,
-    fontSize: 13,
-    fontWeight: "800",
-  },
   emptyState: {
     alignItems: "center",
     paddingHorizontal: 24,
@@ -1069,9 +716,19 @@ const styles = StyleSheet.create({
     borderColor: WARNA.border,
     backgroundColor: WARNA.soft,
   },
-  emptyStateCompact: {
-    paddingVertical: 22,
-    marginBottom: 13,
+  emptyMark: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: WARNA.highlight,
+    marginBottom: 12,
+  },
+  emptyMarkText: {
+    color: WARNA.text,
+    fontSize: 22,
+    fontWeight: "700",
   },
   emptyTitle: {
     color: WARNA.text,
@@ -1084,95 +741,5 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     textAlign: "center",
     marginTop: 5,
-  },
-  modalBackdrop: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0, 0, 0, 0.45)",
-  },
-  formCard: {
-    padding: 20,
-    paddingBottom: 28,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    backgroundColor: WARNA.surface,
-  },
-  modalHeading: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 12,
-    marginBottom: 16,
-  },
-  modalHeadingText: {
-    flex: 1,
-  },
-  modalTitle: {
-    color: WARNA.text,
-    fontSize: 18,
-    lineHeight: 24,
-    fontWeight: "800",
-    letterSpacing: -0.2,
-    marginTop: 4,
-  },
-  modalClose: {
-    color: WARNA.text,
-    fontSize: 28,
-    lineHeight: 30,
-  },
-  field: {
-    marginBottom: 13,
-  },
-  fieldLabel: {
-    color: WARNA.textMuted,
-    fontSize: 11,
-    fontWeight: "700",
-    marginBottom: 6,
-  },
-  input: {
-    minHeight: 44,
-    paddingHorizontal: 13,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: WARNA.border,
-    backgroundColor: WARNA.bg,
-    color: WARNA.text,
-    fontSize: 14,
-  },
-  formError: {
-    color: "#B4233F",
-    fontSize: 12,
-    lineHeight: 18,
-    marginBottom: 10,
-  },
-  modalActions: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 4,
-  },
-  modalButton: {
-    flex: 1,
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 12,
-  },
-  cancelButton: {
-    borderWidth: 1,
-    borderColor: WARNA.border,
-    backgroundColor: WARNA.bg,
-  },
-  cancelText: {
-    color: WARNA.text,
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  saveButton: {
-    backgroundColor: WARNA.primary,
-  },
-  saveText: {
-    color: WARNA.surface,
-    fontSize: 12,
-    fontWeight: "800",
   },
 });

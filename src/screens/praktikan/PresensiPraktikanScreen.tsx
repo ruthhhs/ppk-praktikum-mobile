@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   KeyboardAvoidingView,
-  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -34,6 +34,10 @@ import {
   kirimPresensi,
 } from '@/services/presensi';
 import StatusBadge from '@/components/ui/StatusBadge';
+import BannerKondisiPresensi, {
+  BannerJaringanOffline,
+  type JenisKondisiLokasiPresensi,
+} from '@/components/praktikan/BannerKondisiPresensi';
 import {
   PresensiInfoModal,
   PresensiSuccessModal,
@@ -100,14 +104,35 @@ export default function PresensiPraktikanScreen() {
 
   const [kode, setKode] = useState('');
   const [pesanErrorInput, setPesanErrorInput] = useState<string | null>(null);
+  const [pesanJaringan, setPesanJaringan] = useState<string | null>(null);
   const [dataSuksesModal, setDataSuksesModal] =
     useState<DataSuksesPresensi | null>(null);
   const [alasanInfoModal, setAlasanInfoModal] =
     useState<AlasanPenolakanPresensi | null>(null);
+  const appStateRef = useRef(AppState.currentState);
 
   // Mulai pemeriksaan lokasi saat halaman dibuka
   useEffect(() => {
     void segarkan();
+  }, [segarkan]);
+
+  // Otomatis periksa ulang lokasi saat pengguna kembali dari Pengaturan perangkat
+  // (mis. setelah menyalakan GPS atau memberikan izin lokasi)
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const sebelumnyaTidakAktif =
+        appStateRef.current === 'background' ||
+        appStateRef.current === 'inactive';
+      appStateRef.current = nextState;
+
+      if (sebelumnyaTidakAktif && nextState === 'active') {
+        void segarkan();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
   }, [segarkan]);
 
   const sesiAktif = useMemo(() => {
@@ -207,10 +232,16 @@ export default function PresensiPraktikanScreen() {
     );
   }, [koordinat, labData]);
 
-  const evaluasiLokasi = useMemo(() => {
+  const evaluasiLokasi = useMemo((): {
+    valid: boolean;
+    jenis: JenisKondisiLokasiPresensi;
+    judul: string;
+    pesan: string;
+  } => {
     if (!labIdAktif || (!labLoading && !labData && !labError)) {
       return {
         valid: false,
+        jenis: 'lab_tidak_aktif',
         judul: 'Laboratorium belum ditentukan',
         pesan:
           'Kelas ini belum memiliki laboratorium aktif. Hubungi asisten praktikum.',
@@ -220,6 +251,7 @@ export default function PresensiPraktikanScreen() {
     if (labLoading) {
       return {
         valid: false,
+        jenis: 'lab_memuat',
         judul: 'Memuat data laboratorium',
         pesan: 'Mengambil koordinat dan radius laboratorium dari Firestore...',
       };
@@ -228,6 +260,7 @@ export default function PresensiPraktikanScreen() {
     if (labError) {
       return {
         valid: false,
+        jenis: 'lab_galat',
         judul: 'Gagal memuat data lab',
         pesan: labError,
       };
@@ -236,51 +269,66 @@ export default function PresensiPraktikanScreen() {
     if (labData && !labData.aktif) {
       return {
         valid: false,
+        jenis: 'lab_tidak_aktif',
         judul: 'Laboratorium tidak aktif',
         pesan:
           'Laboratorium untuk kelas ini sedang dinonaktifkan sehingga presensi tidak dapat dilakukan.',
       };
     }
 
-    if (statusLokasi === 'memuat' || statusLokasi === 'menunggu_koordinat') {
+    if (statusLokasi === 'memuat') {
       return {
         valid: false,
+        jenis: 'memuat',
+        judul: 'Memeriksa lokasi perangkat',
+        pesan: 'Sedang menyiapkan layanan lokasi dan membaca koordinat GPS...',
+      };
+    }
+
+    if (statusLokasi === 'menunggu_koordinat') {
+      return {
+        valid: false,
+        jenis: 'menunggu_koordinat',
         judul: 'Menunggu koordinat GPS',
         pesan:
-          'Sedang mencari lokasi perangkatmu. Pastikan berada di area dengan sinyal GPS baik.',
+          'Koordinat perangkat belum tersedia. Pastikan berada di area dengan sinyal GPS baik atau aktifkan izin lokasi.',
       };
     }
 
     if (statusLokasi === 'izin_ditolak') {
       return {
         valid: false,
+        jenis: 'izin_ditolak',
         judul: 'Izin lokasi ditolak',
         pesan:
-          'Aktifkan izin lokasi agar aplikasi dapat memastikan kamu berada di dalam radius laboratorium.',
+          'Presensi membutuhkan izin lokasi. Berikan izin atau aktifkan lewat Pengaturan perangkat.',
       };
     }
 
     if (statusLokasi === 'layanan_mati') {
       return {
         valid: false,
+        jenis: 'layanan_mati',
         judul: 'Layanan lokasi (GPS) mati',
         pesan:
-          'Nyalakan layanan lokasi di perangkatmu lalu tekan Segarkan Lokasi.',
+          'Nyalakan layanan lokasi di pengaturan perangkat, lalu kembali ke halaman ini atau tekan Coba Lagi.',
       };
     }
 
     if (statusLokasi === 'galat' || !koordinat) {
       return {
         valid: false,
+        jenis: 'galat_lokasi',
         judul: 'Lokasi belum tersedia',
         pesan:
-          'Tidak dapat membaca lokasi perangkat saat ini. Coba segarkan lokasi kembali.',
+          'Tidak dapat membaca lokasi perangkat saat ini. Periksa GPS lalu tekan Coba Lagi.',
       };
     }
 
     if (koordinat.mocked) {
       return {
         valid: false,
+        jenis: 'lokasi_mock',
         judul: 'Lokasi palsu terdeteksi',
         pesan:
           'Matikan aplikasi lokasi palsu (mock location) agar presensi dapat diproses.',
@@ -290,6 +338,7 @@ export default function PresensiPraktikanScreen() {
     if (koordinat.akurasi > BATAS_AKURASI_PRESENSI_METER) {
       return {
         valid: false,
+        jenis: 'akurasi_buruk',
         judul: 'Akurasi GPS belum memadai',
         pesan: `Akurasi saat ini ±${Math.round(koordinat.akurasi)} m (maksimal ${BATAS_AKURASI_PRESENSI_METER} m). Pindah ke area yang lebih terbuka lalu segarkan lokasi.`,
       };
@@ -298,6 +347,7 @@ export default function PresensiPraktikanScreen() {
     if (jarakMeter === null || !labData) {
       return {
         valid: false,
+        jenis: 'menunggu_koordinat',
         judul: 'Menghitung jarak ke lab',
         pesan: 'Sedang menghitung jarak posisimu terhadap laboratorium.',
       };
@@ -306,6 +356,7 @@ export default function PresensiPraktikanScreen() {
     if (jarakMeter > labData.radiusMeter) {
       return {
         valid: false,
+        jenis: 'di_luar_radius',
         judul: 'Di luar radius laboratorium',
         pesan: `Jarakmu saat ini ${formatMeter(jarakMeter)}, melebihi radius ${labData.radiusMeter} m dari ${labData.nama}.`,
       };
@@ -313,6 +364,7 @@ export default function PresensiPraktikanScreen() {
 
     return {
       valid: true,
+      jenis: 'siap_valid',
       judul: 'Lokasi sesuai radius laboratorium',
       pesan: `Kamu berada dalam radius ${labData.radiusMeter} m dari ${labData.nama}.`,
     };
@@ -382,6 +434,7 @@ export default function PresensiPraktikanScreen() {
     }
 
     setSedangMengirim(true);
+    setPesanJaringan(null);
     try {
       const hasil = await kirimPresensi(
         sesiAktif.id,
@@ -401,6 +454,9 @@ export default function PresensiPraktikanScreen() {
       );
 
       if (!hasil.ok) {
+        if (hasil.reason === 'gagal_jaringan') {
+          setPesanJaringan(hasil.pesan);
+        }
         if (
           hasil.reason === 'kode_kosong' ||
           hasil.reason === 'kode_format' ||
@@ -541,8 +597,13 @@ export default function PresensiPraktikanScreen() {
   const tombolKirimNonaktif =
     !sesiBisaPresensi || !evaluasiLokasi.valid || sedangMengirim;
 
-  const sedangMemuatLokasi =
-    statusLokasi === 'memuat' || statusLokasi === 'menunggu_koordinat';
+  const pesanOfflineAktif = pesanJaringan ?? error ?? labError;
+
+  const handleCobaLagiJaringan = () => {
+    setPesanJaringan(null);
+    muatUlangData();
+    void segarkan();
+  };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -571,21 +632,12 @@ export default function PresensiPraktikanScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {error ? (
-            <View style={styles.errorBanner}>
-              <Text style={styles.errorBannerTitle}>Gangguan Sinkronisasi</Text>
-              <Text style={styles.errorBannerBody}>{error}</Text>
-              <Pressable
-                accessibilityRole="button"
-                onPress={muatUlangData}
-                style={({ pressed }) => [
-                  styles.secondaryButton,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text style={styles.secondaryButtonText}>Coba Lagi</Text>
-              </Pressable>
-            </View>
+          {pesanOfflineAktif ? (
+            <BannerJaringanOffline
+              pesan={pesanOfflineAktif}
+              sedangMemuat={isLoading}
+              onCobaLagi={handleCobaLagiJaringan}
+            />
           ) : null}
 
           {/* Kartu Info & Status Sesi */}
@@ -661,26 +713,17 @@ export default function PresensiPraktikanScreen() {
               </View>
             </View>
 
-            <View
-              style={[
-                styles.locationBanner,
-                evaluasiLokasi.valid
-                  ? styles.locationBannerOk
-                  : styles.locationBannerWarn,
-              ]}
-            >
-              <View style={styles.locationBannerTitleRow}>
-                {sedangMemuatLokasi || labLoading ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : null}
-                <Text style={styles.locationBannerTitle}>
-                  {evaluasiLokasi.judul}
-                </Text>
-              </View>
-              <Text style={styles.locationBannerBody}>
-                {evaluasiLokasi.pesan}
-              </Text>
-            </View>
+            <BannerKondisiPresensi
+              jenis={evaluasiLokasi.jenis}
+              judul={evaluasiLokasi.judul}
+              pesan={evaluasiLokasi.pesan}
+              statusLokasi={statusLokasi}
+              onMintaIzin={() => void mintaIzin()}
+              onSegarkan={() => {
+                setPesanJaringan(null);
+                void segarkan();
+              }}
+            />
 
             <View style={styles.metricsRow}>
               <View style={styles.metricBox}>
@@ -703,60 +746,6 @@ export default function PresensiPraktikanScreen() {
                     : '-'}
                 </Text>
               </View>
-            </View>
-
-            <View style={styles.locationActionsRow}>
-              {statusLokasi === 'izin_ditolak' ||
-              statusLokasi === 'menunggu_koordinat' ? (
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => void mintaIzin()}
-                  style={({ pressed }) => [
-                    styles.secondaryButton,
-                    styles.flexButton,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text style={styles.secondaryButtonText}>
-                    {statusLokasi === 'izin_ditolak'
-                      ? 'Beri Izin Lokasi'
-                      : 'Aktifkan Lokasi'}
-                  </Text>
-                </Pressable>
-              ) : null}
-
-              {statusLokasi === 'izin_ditolak' ||
-              statusLokasi === 'layanan_mati' ? (
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => void Linking.openSettings()}
-                  style={({ pressed }) => [
-                    styles.secondaryButton,
-                    styles.flexButton,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text style={styles.secondaryButtonText}>
-                    Buka Pengaturan
-                  </Text>
-                </Pressable>
-              ) : null}
-
-              <Pressable
-                accessibilityRole="button"
-                disabled={sedangMemuatLokasi}
-                onPress={() => void segarkan()}
-                style={({ pressed }) => [
-                  styles.secondaryButton,
-                  styles.flexButton,
-                  sedangMemuatLokasi && styles.disabledButton,
-                  pressed && !sedangMemuatLokasi && styles.pressed,
-                ]}
-              >
-                <Text style={styles.secondaryButtonText}>
-                  {sedangMemuatLokasi ? 'Memeriksa...' : 'Segarkan Lokasi'}
-                </Text>
-              </Pressable>
             </View>
           </View>
 
