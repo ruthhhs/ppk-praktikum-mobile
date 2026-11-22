@@ -1003,8 +1003,15 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
           localState.jadwalFirestore.length > 0,
       });
     },
-    () => {
-      // Jangan blokir bila koleksi praktikum belum memiliki data untuk praktikan ini
+    (error) => {
+      console.error('[ERROR QUERY PRAKTIKUM]', error);
+      const code =
+        'code' in error && typeof error.code === 'string'
+          ? error.code
+          : 'unknown';
+      updateState({
+        errorFirestore: `Gagal memuat data praktikum dari Cloud Firestore (${code}).`,
+      });
     },
   );
   unsubscribers.push(praktikumUnsub);
@@ -1285,6 +1292,7 @@ export function usePraktikanStore() {
         return [];
       }
 
+      // 1. Ambil sesi yang sudah dibuat Asisten untuk kelas Praktikan
       const sesiKelasPraktikan = snapshot.sesiFirestore.filter((raw) =>
         apakahSesiMilikKelasPraktikan(
           raw,
@@ -1294,7 +1302,8 @@ export function usePraktikanStore() {
         ),
       );
 
-      return sesiKelasPraktikan.map((raw) => {
+      // 2. Konversi sesi Firestore menjadi format Sesi
+      const sesiDariFirestore: Sesi[] = sesiKelasPraktikan.map((raw) => {
         const jadwalDoc = raw.jadwalId
           ? snapshot.jadwalFirestore.find((j) => j.id === raw.jadwalId)
           : undefined;
@@ -1334,6 +1343,50 @@ export function usePraktikanStore() {
           total: raw.total,
         };
       });
+
+      // 3. Catat jadwal yang sudah memiliki sesi dari Asisten
+      const jadwalSudahMemilikiSesi = new Set(
+        sesiKelasPraktikan
+          .map((item) => item.jadwalId)
+          .filter((id): id is string => Boolean(id)),
+      );
+
+      // 4. Ambil jadwal aktif milik kelas Praktikan yang belum memiliki sesi
+      const jadwalBelumMemilikiSesi = snapshot.jadwalFirestore.filter(
+        (jadwal) =>
+          snapshot.kelasDiikutiIds.includes(jadwal.kelasId) &&
+          !jadwalSudahMemilikiSesi.has(jadwal.id),
+      );
+
+      // 5. Jadikan jadwal tersebut sebagai entri Belum Dibuka
+      const sesiDariJadwal: Sesi[] = jadwalBelumMemilikiSesi.map((jadwal) => {
+        const kelasDoc = snapshot.kelasFirestore.find(
+          (k) => k.id === jadwal.kelasId,
+        );
+
+        const praktikumDoc = praktikum.find(
+          (p) => p.id === kelasDoc?.praktikumId,
+        );
+
+        return {
+          id: `jadwal-${jadwal.id}`,
+          jadwalId: jadwal.id,
+          kelasId: jadwal.kelasId,
+          labId: kelasDoc?.labId,
+          praktikumId: kelasDoc?.praktikumId ?? '',
+          namaPraktikum: praktikumDoc?.nama ?? 'Praktikum',
+          pertemuanKe: jadwal.pertemuanKe,
+          kelas: kelasDoc?.nama ?? 'Kelas',
+          lab: jadwal.lokasi ?? praktikumDoc?.lab ?? 'Laboratorium',
+          tanggal: jadwal.tanggal,
+          jamMulai: jadwal.jamMulai,
+          jamSelesai: jadwal.jamSelesai,
+          status: 'belum_dibuka',
+        };
+      });
+
+      // 6. Gabungkan sesi yang sudah ada dan jadwal yang belum dibuka
+      return [...sesiDariFirestore, ...sesiDariJadwal];
     }
 
     const daftarLokal = SESI_AWAL.map((sesiLokal) => {

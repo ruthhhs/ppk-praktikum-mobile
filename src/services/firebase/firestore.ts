@@ -263,6 +263,14 @@ export async function tambahPeserta(
   uid: string,
   nama = "",
 ): Promise<void> {
+  const kelas = await readDocument(firestoreRefs.kelasDoc(kelasId));
+  if (!kelas) {
+    throw new Error("Kelas tidak ditemukan saat menambahkan praktikan.");
+  }
+  if (!kelas.praktikumId) {
+    throw new Error("Kelas belum terhubung ke praktikum.");
+  }
+
   const batch = writeBatch(rnDb);
 
   batch.set(firestoreRefs.pesertaDoc(kelasId, uid), {
@@ -273,6 +281,11 @@ export async function tambahPeserta(
   });
 
   batch.update(firestoreRefs.kelasDoc(kelasId), {
+    praktikanUids: arrayUnion(uid),
+    updatedAt: serverTimestamp(),
+  });
+
+  batch.update(firestoreRefs.praktikumDoc(kelas.praktikumId), {
     praktikanUids: arrayUnion(uid),
     updatedAt: serverTimestamp(),
   });
