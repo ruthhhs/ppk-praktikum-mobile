@@ -1,5 +1,5 @@
-import PresensiPraktikanScreen from "../../../screens/praktikan/PresensiPraktikanScreen";
+import TempScreen from "../../../screens/TempScreen";
 
 export default function PraktikanPresensiRoute() {
-  return <PresensiPraktikanScreen/>;
+  return <TempScreen title="Presensi Praktikan" />;
 }

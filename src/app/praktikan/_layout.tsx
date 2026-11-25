@@ -1,10 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { colors } from "../../constants/theme";
-import { usePush } from "../../hooks/usePush";
 
 export default function PraktikanLayout() {
-  usePush();
   return (
     <Tabs
       screenOptions={{
