@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { WARNA } from './praktikanStore';
+import { WARNA } from '../praktikan/praktikanStore';
 
 export type HasilSubmitIzinModal = {
   ok: boolean;

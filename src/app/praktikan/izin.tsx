@@ -1,3 +1,3 @@
-import PraktikanIzinScreen from '../../screens/praktikan/PraktikanIzinScreen';
+import PraktikanIzinScreen from '../../screens/izin/PraktikanIzinScreen';
 
 export default PraktikanIzinScreen;

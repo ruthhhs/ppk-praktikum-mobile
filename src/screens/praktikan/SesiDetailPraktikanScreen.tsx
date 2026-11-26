@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import PengajuanIzinFormModal, {
   type HasilSubmitIzinModal,
-} from '../../components/praktikan/PengajuanIzinFormModal';
+} from '../../components/izin/PengajuanIzinFormModal';
 import {
   PresensiInfoModal,
   type AlasanPenolakanPresensi,
