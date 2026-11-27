@@ -4,7 +4,10 @@ export type TipeNotifikasi =
   | 'sesi_dibuka'
   | 'jadwal_berubah'
   | 'izin_diterima'
-  | 'izin_ditolak';
+  | 'izin_ditolak'
+  | 'tagihan_baru'
+  | 'pembayaran_berhasil'
+  | 'pembayaran_gagal';
 
 export type StatusIzinNotifikasi =
   | 'memuat'

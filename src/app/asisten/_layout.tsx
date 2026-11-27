@@ -1,7 +1,7 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
-import { colors } from "../../constants/theme";
-import { AsistenWorkflowStoreProvider } from "../../screens/asisten/AsistenWorkflowStore";
+import { Ionicons } from '@expo/vector-icons';
+import { Tabs } from 'expo-router';
+import { colors } from '@/constants/theme';
+import { AsistenWorkflowStoreProvider } from '@/screens/asisten/AsistenWorkflowStore';
 
 export default function AsistenLayout() {
   return (
@@ -18,50 +18,57 @@ export default function AsistenLayout() {
         }}
       >
         <Tabs.Screen
-          name="jadwal"
+          name="beranda"
           options={{
-            title: "Jadwal",
+            title: 'Beranda',
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="calendar-outline" size={size} color={color} />
+              <Ionicons name="home-outline" size={size} color={color} />
             ),
           }}
         />
-
+        <Tabs.Screen
+          name="kelola"
+          options={{
+            title: 'Kelola',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="clipboard-outline" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="izin"
+          options={{
+            title: 'Izin',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="document-text-outline" size={size} color={color} />
+            ),
+          }}
+        />
         <Tabs.Screen
           name="peta"
           options={{
-            title: "Peta",
+            title: 'Peta',
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="map-outline" size={size} color={color} />
             ),
           }}
         />
-
-        <Tabs.Screen
-          name="notifikasi"
-          options={{
-            title: "Notifikasi",
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="notifications-outline" size={size} color={color} />
-            ),
-          }}
-        />
-
         <Tabs.Screen
           name="profil"
           options={{
-            title: "Profil",
+            title: 'Profil',
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="person-outline" size={size} color={color} />
             ),
           }}
         />
 
+        <Tabs.Screen name="jadwal" options={{ href: null }} />
+        <Tabs.Screen name="notifikasi" options={{ href: null }} />
         <Tabs.Screen name="detail-sesi" options={{ href: null }} />
         <Tabs.Screen name="rekap-sesi" options={{ href: null }} />
         <Tabs.Screen name="data" options={{ href: null }} />
         <Tabs.Screen name="kelola-sesi" options={{ href: null }} />
-        <Tabs.Screen name="izin" options={{ href: null }} />
         <Tabs.Screen name="laboratorium" options={{ href: null }} />
       </Tabs>
     </AsistenWorkflowStoreProvider>

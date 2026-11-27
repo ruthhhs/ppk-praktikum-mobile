@@ -1,6 +1,6 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
-import { colors } from "../../constants/theme";
+import { Ionicons } from '@expo/vector-icons';
+import { Tabs } from 'expo-router';
+import { colors } from '@/constants/theme';
 
 export default function PraktikanLayout() {
   return (
@@ -16,65 +16,53 @@ export default function PraktikanLayout() {
       }}
     >
       <Tabs.Screen
-        name="jadwal"
+        name="beranda"
         options={{
-          title: "Jadwal",
+          title: 'Beranda',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="calendar-outline" size={size} color={color} />
           ),
         }}
       />
-
-      <Tabs.Screen
-        name="peta"
-        options={{
-          title: "Peta",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="map-outline" size={size} color={color} />
-          ),
-        }}
-      />
-
       <Tabs.Screen
         name="riwayat"
         options={{
-          title: "Riwayat",
+          title: 'Riwayat',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="time-outline" size={size} color={color} />
           ),
         }}
       />
-
       <Tabs.Screen
         name="izin"
         options={{
-          title: "Izin",
+          title: 'Izin',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="document-text-outline" size={size} color={color} />
           ),
         }}
       />
-
       <Tabs.Screen
-        name="notifikasi"
+        name="peta"
         options={{
-          title: "Notifikasi",
+          title: 'Peta',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="notifications-outline" size={size} color={color} />
+            <Ionicons name="map-outline" size={size} color={color} />
           ),
         }}
       />
-
       <Tabs.Screen
         name="profil"
         options={{
-          title: "Profil",
+          title: 'Profil',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person-outline" size={size} color={color} />
           ),
         }}
       />
 
+      <Tabs.Screen name="jadwal" options={{ href: null }} />
+      <Tabs.Screen name="notifikasi" options={{ href: null }} />
       <Tabs.Screen name="detail-sesi" options={{ href: null }} />
       <Tabs.Screen name="presensi/[sesiId]" options={{ href: null }} />
     </Tabs>

@@ -1,5 +1,6 @@
-export type Role = 'asisten' | 'praktikan';
 import type { Timestamp } from '@react-native-firebase/firestore';
+export type Role = 'aslab' | 'asprak' | 'praktikan' | 'asisten';
+
 
 export type User = {
   id: string;
