@@ -117,6 +117,9 @@ function RootNavigator() {
       <Stack.Protected guard={!!user && !role}>
         <Stack.Screen name="akun-bermasalah" />
       </Stack.Protected>
+      <Stack.Protected guard={role === 'aslab'}>
+        <Stack.Screen name="aslab" />
+      </Stack.Protected>
       <Stack.Protected guard={role === 'asisten'}>
         <Stack.Screen name="asisten" />
       </Stack.Protected>

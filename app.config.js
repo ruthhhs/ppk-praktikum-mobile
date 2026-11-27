@@ -2,7 +2,11 @@ const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
 const googleServicesJson = process.env.GOOGLE_SERVICES_JSON;
 
 module.exports = ({ config }) => {
-  const plugins = [...(config.plugins ?? [])];
+  const plugins = [
+  ...(config.plugins ?? []),
+  'expo-sharing',
+  'expo-web-browser',
+];
 
   if (googleMapsApiKey) {
     plugins.push([

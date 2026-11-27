@@ -35,12 +35,14 @@ import type {
   JadwalDoc,
   KelasDoc,
   KodePresensiDoc,
+  PembayaranDoc,
   PengajuanIzinDoc,
   PesertaDoc,
   PraktikumDoc,
   PresensiDoc,
   SesiDoc,
-} from "@/data/firestoreType";
+  TagihanDoc,
+} from '@/data/firestoreType';
 import type { UserProfile } from "@/data/types";
 import { rnDb } from "./index";
 import { LABORATORIUM_TETAP } from '@/data/lokasi';
@@ -139,6 +141,15 @@ export const firestoreRefs = {
       "notifikasi",
       notifikasiId,
     ),
+
+  tagihan: () => collectionReference<TagihanDoc>('tagihan'),
+  tagihanDoc: (tagihanId: string) =>
+    documentReference<TagihanDoc>('tagihan', tagihanId),
+
+  pembayaran: () => collectionReference<PembayaranDoc>('pembayaran'),
+  pembayaranDoc: (orderId: string) =>
+    documentReference<PembayaranDoc>('pembayaran', orderId),
+
 };
 
 export function listenDocument<T extends DocumentData>(
