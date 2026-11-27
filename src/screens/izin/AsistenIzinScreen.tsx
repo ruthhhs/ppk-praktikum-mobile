@@ -13,7 +13,7 @@ import { colors } from "../../constants/theme";
 import {
     useAsistenWorkflowStore,
     type PengajuanIzin,
-} from "./AsistenWorkflowStore";
+} from "../asisten/AsistenWorkflowStore";
 
 type Filter = "menunggu" | "semua" | "diputuskan";
 type Decision = "diterima" | "ditolak";
