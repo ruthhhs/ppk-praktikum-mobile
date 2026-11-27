@@ -10,10 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import {
-  isFirebaseConfigured,
-  isNativeFirebaseConfigured,
-} from '../../services/firebase';
+import { colors } from '@/constants/theme';
 import {
   ambilNamaDepan,
   ambilNamaPraktikum,
@@ -22,9 +19,7 @@ import {
   formatRentangJam,
   formatTanggalIndonesia,
   LABEL_STATUS,
-  TANGGAL_HARI_INI,
   usePraktikanStore,
-  WARNA,
   type PengajuanIzinRingkas,
   type Praktikum,
   type Presensi,
@@ -280,12 +275,7 @@ export default function PraktikanJadwalScreen() {
         return true;
       }
       if (filterAktif === 'hari_ini') {
-        const isFirestoreAktif =
-          isFirebaseConfigured || isNativeFirebaseConfigured;
-        return isFirestoreAktif
-          ? item.tanggal === tanggalJakarta
-          : item.tanggal === tanggalJakarta ||
-              item.tanggal === TANGGAL_HARI_INI;
+        return item.tanggal === tanggalJakarta;
       }
       return item.status === filterAktif;
     });
@@ -491,7 +481,7 @@ export default function PraktikanJadwalScreen() {
         ListEmptyComponent={
           isLoading ? (
             <View style={styles.loadingCard}>
-              <ActivityIndicator size="small" color={WARNA.primary} />
+              <ActivityIndicator size="small" color={colors.primary} />
               <Text style={styles.loadingTitle}>Memuat jadwal praktikum...</Text>
               <Text style={styles.loadingBody}>
                 Menyinkronkan data sesi dan kelas kamu secara real-time.
@@ -512,7 +502,7 @@ export default function PraktikanJadwalScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: WARNA.bg,
+    backgroundColor: colors.bg,
   },
   stateWrapper: {
     flex: 1,
@@ -533,7 +523,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   screenTitle: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 26,
     fontWeight: '800',
     lineHeight: 32,
@@ -545,39 +535,39 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   greetingText: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     fontWeight: '600',
     flex: 1,
   },
   roleChip: {
-    backgroundColor: WARNA.surface,
-    borderColor: WARNA.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 5,
   },
   roleChipText: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 12,
     fontWeight: '700',
   },
   errorBanner: {
-    backgroundColor: WARNA.surface,
-    borderColor: WARNA.primary,
+    backgroundColor: colors.surface,
+    borderColor: colors.primary,
     borderWidth: 1.5,
     borderRadius: 18,
     padding: 16,
     gap: 8,
   },
   errorBannerTitle: {
-    color: WARNA.primary,
+    color: colors.primary,
     fontSize: 15,
     fontWeight: '800',
   },
   errorBannerBody: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 13,
     lineHeight: 19,
     fontWeight: '500',
@@ -588,19 +578,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: 12,
-    backgroundColor: WARNA.primary,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,
   },
   retryButtonText: {
-    color: WARNA.surface,
+    color: colors.surface,
     fontSize: 13,
     fontWeight: '700',
   },
   activeBanner: {
-    backgroundColor: WARNA.surface,
-    borderColor: WARNA.primary,
+    backgroundColor: colors.surface,
+    borderColor: colors.primary,
     borderWidth: 1.5,
     borderRadius: 20,
     padding: 16,
@@ -613,32 +603,32 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   activeBannerTime: {
-    color: WARNA.primary,
+    color: colors.primary,
     fontSize: 13,
     fontWeight: '800',
   },
   activeBannerTitle: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 18,
     fontWeight: '800',
     lineHeight: 24,
   },
   activeBannerSub: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     fontWeight: '600',
   },
   activeBannerCtaRow: {
     marginTop: 4,
-    backgroundColor: WARNA.bg,
-    borderColor: WARNA.border,
+    backgroundColor: colors.bg,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
   activeBannerCtaText: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -654,23 +644,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: WARNA.bg,
+    backgroundColor: colors.bg,
     borderWidth: 1,
-    borderColor: WARNA.border,
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   filterChipSelected: {
-    backgroundColor: WARNA.highlight,
-    borderColor: WARNA.text,
+    backgroundColor: colors.highlight,
+    borderColor: colors.text,
   },
   filterChipText: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '700',
   },
   filterChipTextSelected: {
-    color: WARNA.text,
+    color: colors.text,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -678,25 +668,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   sectionTitle: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 18,
     fontWeight: '800',
   },
   sectionCount: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },
   sessionCard: {
-    backgroundColor: WARNA.surface,
-    borderColor: WARNA.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 20,
     padding: 16,
     gap: 12,
   },
   sessionCardOpen: {
-    borderColor: WARNA.text,
+    borderColor: colors.text,
   },
   sessionCardPressed: {
     opacity: 0.9,
@@ -713,19 +703,19 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   courseName: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 18,
     fontWeight: '800',
     lineHeight: 24,
   },
   sessionMeta: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     fontWeight: '600',
   },
   infoDivider: {
     height: 1,
-    backgroundColor: WARNA.border,
+    backgroundColor: colors.border,
   },
   detailsColumn: {
     gap: 6,
@@ -737,12 +727,12 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   detailLabel: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },
   detailValue: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -754,20 +744,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
     gap: 6,
-    backgroundColor: WARNA.highlight,
-    borderColor: WARNA.text,
+    backgroundColor: colors.highlight,
+    borderColor: colors.text,
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   attendedCheck: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 13,
     fontWeight: '900',
   },
   attendedText: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 13,
     fontWeight: '800',
   },
@@ -776,25 +766,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   openPromptBadge: {
-    backgroundColor: WARNA.bg,
-    borderColor: WARNA.primary,
+    backgroundColor: colors.bg,
+    borderColor: colors.primary,
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   openPromptText: {
-    color: WARNA.primary,
+    color: colors.primary,
     fontSize: 13,
     fontWeight: '700',
   },
   unattendedText: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },
   assistantCountText: {
-    color: WARNA.primary,
+    color: colors.primary,
     fontSize: 14,
     fontWeight: '800',
   },
@@ -808,39 +798,39 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   status_belum_dibuka: {
-    backgroundColor: WARNA.bg,
-    borderColor: WARNA.text,
+    backgroundColor: colors.bg,
+    borderColor: colors.text,
   },
   status_dibuka: {
-    backgroundColor: WARNA.highlight,
-    borderColor: WARNA.text,
+    backgroundColor: colors.highlight,
+    borderColor: colors.text,
   },
   status_ditutup: {
-    backgroundColor: WARNA.primary,
-    borderColor: WARNA.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   statusDot: {
     width: 7,
     height: 7,
     borderRadius: 999,
-    backgroundColor: WARNA.text,
+    backgroundColor: colors.text,
   },
   statusText: {
     fontSize: 12,
     fontWeight: '800',
   },
   statusText_belum_dibuka: {
-    color: WARNA.text,
+    color: colors.text,
   },
   statusText_dibuka: {
-    color: WARNA.text,
+    color: colors.text,
   },
   statusText_ditutup: {
-    color: WARNA.surface,
+    color: colors.surface,
   },
   loadingCard: {
-    backgroundColor: WARNA.surface,
-    borderColor: WARNA.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 20,
     padding: 24,
@@ -848,20 +838,20 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   loadingTitle: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '800',
     textAlign: 'center',
   },
   loadingBody: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     lineHeight: 19,
     textAlign: 'center',
   },
   emptyCard: {
-    backgroundColor: WARNA.surface,
-    borderColor: WARNA.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 20,
     padding: 24,
@@ -872,25 +862,25 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: WARNA.bg,
-    borderColor: WARNA.border,
+    backgroundColor: colors.bg,
+    borderColor: colors.border,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   emptyIconText: {
-    color: WARNA.primary,
+    color: colors.primary,
     fontSize: 18,
     fontWeight: '800',
   },
   emptyTitle: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '800',
     textAlign: 'center',
   },
   emptyBody: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
@@ -901,12 +891,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: WARNA.primary,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   resetButtonText: {
-    color: WARNA.surface,
+    color: colors.surface,
     fontSize: 13,
     fontWeight: '700',
   },

@@ -16,6 +16,7 @@ import {
   PresensiInfoModal,
   type AlasanPenolakanPresensi,
 } from '../../components/praktikan/PresensiFeedbackModals';
+import { colors } from '@/constants/theme';
 import {
   ambilNamaPraktikum,
   formatJamPresensi,
@@ -24,9 +25,7 @@ import {
   formatWaktuLengkapWib,
   LABEL_STATUS,
   LABEL_STATUS_IZIN,
-  normalisasiIdSesiLokal,
   usePraktikanStore,
-  WARNA,
   type Praktikum,
   type Presensi,
   type Role,
@@ -92,7 +91,7 @@ export default function SesiDetailPraktikanScreen() {
     : params.sesiId;
 
   const [selectedSesiId, setSelectedSesiId] = useState<string>(
-    paramSesiId ?? normalisasiIdSesiLokal(paramSesiId),
+    paramSesiId ?? '',
   );
   const [formIzinTerbuka, setFormIzinTerbuka] = useState(false);
   const [pesanSuksesIzin, setPesanSuksesIzin] = useState<string | null>(null);
@@ -101,18 +100,10 @@ export default function SesiDetailPraktikanScreen() {
 
   const sesiAktif = useMemo(() => {
     if (paramSesiId) {
-      const normParam = normalisasiIdSesiLokal(paramSesiId);
-      return (
-        sesi.find(
-          (item) => item.id === paramSesiId || item.id === normParam,
-        ) ?? null
-      );
+      return sesi.find((item) => item.id === paramSesiId) ?? null;
     }
-    const normSelected = normalisasiIdSesiLokal(selectedSesiId);
     return (
-      sesi.find(
-        (item) => item.id === selectedSesiId || item.id === normSelected,
-      ) ??
+      sesi.find((item) => item.id === selectedSesiId) ??
       sesi[0] ??
       null
     );
@@ -216,7 +207,7 @@ export default function SesiDetailPraktikanScreen() {
 
         <View style={styles.emptyContainer}>
           <View style={styles.emptyCard}>
-            <ActivityIndicator size="small" color={WARNA.primary} />
+            <ActivityIndicator size="small" color={colors.primary} />
             <Text style={styles.emptyTitle}>Memuat detail sesi...</Text>
             <Text style={styles.emptyBody}>
               Menyinkronkan status sesi dan presensi dari Cloud Firestore.
@@ -716,7 +707,7 @@ export default function SesiDetailPraktikanScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: WARNA.bg,
+    backgroundColor: colors.bg,
   },
   headerRow: {
     flexDirection: 'row',
@@ -726,27 +717,27 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: WARNA.border,
-    backgroundColor: WARNA.bg,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.bg,
   },
   backButton: {
     minHeight: 44,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
-    backgroundColor: WARNA.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: WARNA.border,
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   backButtonText: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 14,
     fontWeight: '700',
   },
   headerTitle: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 20,
     fontWeight: '800',
     flex: 1,
@@ -761,33 +752,33 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   errorBanner: {
-    backgroundColor: WARNA.surface,
-    borderColor: WARNA.primary,
+    backgroundColor: colors.surface,
+    borderColor: colors.primary,
     borderWidth: 1.5,
     borderRadius: 18,
     padding: 16,
     gap: 6,
   },
   errorBannerTitle: {
-    color: WARNA.primary,
+    color: colors.primary,
     fontSize: 15,
     fontWeight: '800',
   },
   errorBannerBody: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 13,
     lineHeight: 19,
   },
   previewSwitcherCard: {
-    backgroundColor: WARNA.surface,
-    borderColor: WARNA.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 16,
     padding: 12,
     gap: 8,
   },
   previewSwitcherLabel: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -799,27 +790,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: WARNA.bg,
+    backgroundColor: colors.bg,
     borderWidth: 1,
-    borderColor: WARNA.border,
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   previewChipActive: {
-    backgroundColor: WARNA.highlight,
-    borderColor: WARNA.text,
+    backgroundColor: colors.highlight,
+    borderColor: colors.text,
   },
   previewChipText: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: '700',
   },
   previewChipTextActive: {
-    color: WARNA.text,
+    color: colors.text,
   },
   sessionInfoCard: {
-    backgroundColor: WARNA.surface,
-    borderColor: WARNA.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 20,
     padding: 18,
@@ -836,19 +827,19 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   courseTitle: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 22,
     fontWeight: '800',
     lineHeight: 28,
   },
   courseSubTitle: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     fontWeight: '600',
   },
   divider: {
     height: 1,
-    backgroundColor: WARNA.border,
+    backgroundColor: colors.border,
   },
   infoList: {
     gap: 10,
@@ -860,12 +851,12 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   infoLabel: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     fontWeight: '600',
   },
   infoValue: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 14,
     fontWeight: '700',
     flex: 1,
@@ -875,8 +866,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: WARNA.highlight,
-    borderColor: WARNA.text,
+    backgroundColor: colors.highlight,
+    borderColor: colors.text,
     borderWidth: 1,
     borderRadius: 14,
     padding: 12,
@@ -886,14 +877,14 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: WARNA.bg,
-    borderColor: WARNA.text,
+    backgroundColor: colors.bg,
+    borderColor: colors.text,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   attendedBadgeCheck: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '900',
   },
@@ -902,33 +893,33 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   attendedIndicatorTitle: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 14,
     fontWeight: '800',
   },
   attendedIndicatorSub: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 13,
     fontWeight: '600',
   },
   statusBanner: {
-    backgroundColor: WARNA.surface,
-    borderColor: WARNA.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 18,
     padding: 16,
     gap: 6,
   },
   statusBannerOpen: {
-    borderColor: WARNA.text,
+    borderColor: colors.text,
     borderWidth: 1.5,
   },
   statusBannerAttended: {
-    backgroundColor: WARNA.highlight,
-    borderColor: WARNA.text,
+    backgroundColor: colors.highlight,
+    borderColor: colors.text,
   },
   statusBannerClosed: {
-    borderColor: WARNA.primary,
+    borderColor: colors.primary,
   },
   bannerHeaderRow: {
     flexDirection: 'row',
@@ -939,22 +930,22 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 999,
-    backgroundColor: WARNA.text,
+    backgroundColor: colors.text,
   },
   bannerDotOpen: {
-    backgroundColor: WARNA.primary,
+    backgroundColor: colors.primary,
   },
   bannerDotClosed: {
-    backgroundColor: WARNA.primary,
+    backgroundColor: colors.primary,
   },
   bannerTitle: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '800',
     flex: 1,
   },
   bannerSubTitle: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '500',
@@ -966,20 +957,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: 12,
-    backgroundColor: WARNA.bg,
-    borderColor: WARNA.text,
+    backgroundColor: colors.bg,
+    borderColor: colors.text,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   bannerInfoButtonText: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 13,
     fontWeight: '700',
   },
   izinSectionCard: {
-    backgroundColor: WARNA.surface,
-    borderColor: WARNA.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 20,
     padding: 18,
@@ -992,12 +983,12 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   izinSectionTitle: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 17,
     fontWeight: '800',
   },
   izinSectionSub: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     lineHeight: 18,
   },
@@ -1008,59 +999,59 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   izinStatusBadgeMenunggu: {
-    backgroundColor: WARNA.bg,
-    borderColor: WARNA.text,
+    backgroundColor: colors.bg,
+    borderColor: colors.text,
   },
   izinStatusBadgeDiterima: {
-    backgroundColor: WARNA.highlight,
-    borderColor: WARNA.text,
+    backgroundColor: colors.highlight,
+    borderColor: colors.text,
   },
   izinStatusBadgeDitolak: {
-    backgroundColor: WARNA.primary,
-    borderColor: WARNA.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   izinStatusBadgeText: {
     fontSize: 12,
     fontWeight: '800',
   },
   izinStatusBadgeTextMenunggu: {
-    color: WARNA.text,
+    color: colors.text,
   },
   izinStatusBadgeTextDiterima: {
-    color: WARNA.text,
+    color: colors.text,
   },
   izinStatusBadgeTextDitolak: {
-    color: WARNA.bg,
+    color: colors.bg,
   },
   izinFeedbackNotice: {
-    backgroundColor: WARNA.highlight,
-    borderColor: WARNA.text,
+    backgroundColor: colors.highlight,
+    borderColor: colors.text,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
   izinFeedbackText: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 13,
     lineHeight: 18,
     fontWeight: '700',
   },
   izinSubmittedDetailBox: {
-    backgroundColor: WARNA.bg,
-    borderColor: WARNA.border,
+    backgroundColor: colors.bg,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 14,
     padding: 14,
     gap: 8,
   },
   izinDetailLabel: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: '700',
   },
   izinDetailReason: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '600',
@@ -1071,30 +1062,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 6,
-    backgroundColor: WARNA.surface,
-    borderColor: WARNA.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
   izinAiLabel: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: '700',
   },
   izinAiValue: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 12,
     fontWeight: '800',
   },
   izinMetaTime: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: '600',
   },
   izinMetaNote: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
     lineHeight: 17,
   },
@@ -1102,15 +1093,15 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   izinUnavailableNote: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     lineHeight: 19,
   },
   izinOpenModalBtn: {
     minHeight: 46,
     borderRadius: 14,
-    backgroundColor: WARNA.bg,
-    borderColor: WARNA.primary,
+    backgroundColor: colors.bg,
+    borderColor: colors.primary,
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1118,15 +1109,15 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
   },
   izinOpenModalBtnText: {
-    color: WARNA.primary,
+    color: colors.primary,
     fontSize: 14,
     fontWeight: '800',
   },
   secondaryOutlineBtn: {
     minHeight: 42,
     borderRadius: 12,
-    backgroundColor: WARNA.bg,
-    borderColor: WARNA.border,
+    backgroundColor: colors.bg,
+    borderColor: colors.border,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1134,7 +1125,7 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   secondaryOutlineBtnText: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -1143,28 +1134,28 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 16,
     borderTopWidth: 1,
-    borderTopColor: WARNA.border,
-    backgroundColor: WARNA.bg,
+    borderTopColor: colors.border,
+    backgroundColor: colors.bg,
   },
   primaryButton: {
     minHeight: 50,
     borderRadius: 16,
-    backgroundColor: WARNA.primary,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 20,
     paddingVertical: 14,
   },
   primaryButtonText: {
-    color: WARNA.surface,
+    color: colors.surface,
     fontSize: 16,
     fontWeight: '800',
   },
   disabledButton: {
-    backgroundColor: WARNA.border,
+    backgroundColor: colors.border,
   },
   disabledButtonText: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
   },
   statusBadge: {
     flexDirection: 'row',
@@ -1176,35 +1167,35 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   status_belum_dibuka: {
-    backgroundColor: WARNA.bg,
-    borderColor: WARNA.text,
+    backgroundColor: colors.bg,
+    borderColor: colors.text,
   },
   status_dibuka: {
-    backgroundColor: WARNA.highlight,
-    borderColor: WARNA.text,
+    backgroundColor: colors.highlight,
+    borderColor: colors.text,
   },
   status_ditutup: {
-    backgroundColor: WARNA.primary,
-    borderColor: WARNA.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   statusDot: {
     width: 7,
     height: 7,
     borderRadius: 999,
-    backgroundColor: WARNA.text,
+    backgroundColor: colors.text,
   },
   statusText: {
     fontSize: 12,
     fontWeight: '800',
   },
   statusText_belum_dibuka: {
-    color: WARNA.text,
+    color: colors.text,
   },
   statusText_dibuka: {
-    color: WARNA.text,
+    color: colors.text,
   },
   statusText_ditutup: {
-    color: WARNA.surface,
+    color: colors.surface,
   },
   emptyContainer: {
     flex: 1,
@@ -1212,8 +1203,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emptyCard: {
-    backgroundColor: WARNA.surface,
-    borderColor: WARNA.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 20,
     padding: 24,
@@ -1221,13 +1212,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   emptyTitle: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 18,
     fontWeight: '800',
     textAlign: 'center',
   },
   emptyBody: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',

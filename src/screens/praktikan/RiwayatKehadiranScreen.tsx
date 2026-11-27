@@ -10,13 +10,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { colors } from '@/constants/theme';
 import {
   ambilNamaPraktikum,
   formatJamPresensi,
   formatRentangJam,
   formatTanggalIndonesia,
   usePraktikanStore,
-  WARNA,
   type Praktikum,
   type Presensi,
   type Role,
@@ -419,7 +419,7 @@ export default function RiwayatKehadiranScreen() {
         ListEmptyComponent={
           isLoading ? (
             <View style={styles.emptyCard}>
-              <ActivityIndicator size="small" color={WARNA.primary} />
+              <ActivityIndicator size="small" color={colors.primary} />
               <Text style={styles.emptyTitle}>Memuat riwayat kehadiran...</Text>
               <Text style={styles.emptyBody}>
                 Mengambil data presensi milik akun kamu dari Cloud Firestore.
@@ -440,7 +440,7 @@ export default function RiwayatKehadiranScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: WARNA.bg,
+    backgroundColor: colors.bg,
   },
   stateWrapper: {
     flex: 1,
@@ -461,37 +461,37 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   screenTitle: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 26,
     fontWeight: '800',
     lineHeight: 32,
   },
   studentIdentity: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     fontWeight: '600',
   },
   errorBanner: {
-    backgroundColor: WARNA.surface,
-    borderColor: WARNA.primary,
+    backgroundColor: colors.surface,
+    borderColor: colors.primary,
     borderWidth: 1.5,
     borderRadius: 18,
     padding: 16,
     gap: 8,
   },
   errorBannerTitle: {
-    color: WARNA.primary,
+    color: colors.primary,
     fontSize: 15,
     fontWeight: '800',
   },
   errorBannerBody: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 13,
     lineHeight: 19,
   },
   summaryCard: {
-    backgroundColor: WARNA.surface,
-    borderColor: WARNA.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 20,
     padding: 18,
@@ -504,26 +504,26 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   summaryTitle: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 18,
     fontWeight: '800',
     flex: 1,
   },
   summaryPercentage: {
-    color: WARNA.primary,
+    color: colors.primary,
     fontSize: 18,
     fontWeight: '800',
   },
   progressTrack: {
     height: 10,
     borderRadius: 999,
-    backgroundColor: WARNA.border,
+    backgroundColor: colors.border,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
     borderRadius: 999,
-    backgroundColor: WARNA.primary,
+    backgroundColor: colors.primary,
   },
   summaryStatsRow: {
     flexDirection: 'row',
@@ -539,16 +539,16 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: WARNA.text,
+    backgroundColor: colors.text,
   },
   statDotTidakHadir: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: WARNA.primary,
+    backgroundColor: colors.primary,
   },
   statText: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -560,27 +560,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: WARNA.bg,
+    backgroundColor: colors.bg,
     borderWidth: 1,
-    borderColor: WARNA.border,
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   filterChipSelected: {
-    backgroundColor: WARNA.highlight,
-    borderColor: WARNA.text,
+    backgroundColor: colors.highlight,
+    borderColor: colors.text,
   },
   filterChipText: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '700',
   },
   filterChipTextSelected: {
-    color: WARNA.text,
+    color: colors.text,
   },
   riwayatCard: {
-    backgroundColor: WARNA.surface,
-    borderColor: WARNA.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 20,
     padding: 16,
@@ -601,24 +601,24 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   courseTitle: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 17,
     fontWeight: '800',
     lineHeight: 23,
   },
   sessionSubMeta: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },
   dateLabel: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 13,
     fontWeight: '700',
   },
   divider: {
     height: 1,
-    backgroundColor: WARNA.border,
+    backgroundColor: colors.border,
   },
   cardBottomRow: {
     flexDirection: 'row',
@@ -635,49 +635,49 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: WARNA.highlight,
-    borderColor: WARNA.text,
+    backgroundColor: colors.highlight,
+    borderColor: colors.text,
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
   badgeHadirCheck: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 12,
     fontWeight: '900',
   },
   badgeHadirText: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 12,
     fontWeight: '800',
   },
   waktuHadirText: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 14,
     fontWeight: '800',
   },
   badgeTidakHadir: {
-    backgroundColor: WARNA.primary,
-    borderColor: WARNA.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
   badgeTidakHadirText: {
-    color: WARNA.surface,
+    color: colors.surface,
     fontSize: 12,
     fontWeight: '800',
   },
   scheduleClockText: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },
   emptyCard: {
-    backgroundColor: WARNA.surface,
-    borderColor: WARNA.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 20,
     padding: 24,
@@ -688,25 +688,25 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: WARNA.bg,
-    borderColor: WARNA.border,
+    backgroundColor: colors.bg,
+    borderColor: colors.border,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   emptyIconText: {
-    color: WARNA.primary,
+    color: colors.primary,
     fontSize: 18,
     fontWeight: '800',
   },
   emptyTitle: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '800',
     textAlign: 'center',
   },
   emptyBody: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
@@ -717,12 +717,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: WARNA.primary,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   resetButtonText: {
-    color: WARNA.surface,
+    color: colors.surface,
     fontSize: 13,
     fontWeight: '700',
   },

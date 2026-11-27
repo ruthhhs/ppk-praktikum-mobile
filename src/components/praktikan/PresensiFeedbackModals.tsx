@@ -1,6 +1,6 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { WARNA } from './praktikanStore';
+import { colors } from '@/constants/theme';
 
 export type AlasanPenolakanPresensi =
   | 'sudah_presensi'
@@ -28,7 +28,7 @@ export type DataSuksesPresensi = {
 function formatWaktuLengkap(waktuIso: string): string {
   const date = new Date(waktuIso);
   if (Number.isNaN(date.getTime())) {
-    return '08.03.12 WIB';
+    return '-';
   }
   try {
     const formatter = new Intl.DateTimeFormat('id-ID', {
@@ -307,11 +307,11 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     left: 0,
-    backgroundColor: WARNA.scrim,
+    backgroundColor: colors.scrim,
   },
   modalCard: {
-    backgroundColor: WARNA.surface,
-    borderColor: WARNA.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 22,
     padding: 20,
@@ -322,25 +322,25 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: WARNA.highlight,
-    borderColor: WARNA.text,
+    backgroundColor: colors.highlight,
+    borderColor: colors.text,
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconSuccessText: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 28,
     fontWeight: '900',
   },
   infoBadgePill: {
-    backgroundColor: WARNA.primary,
+    backgroundColor: colors.primary,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 5,
   },
   infoBadgeText: {
-    color: WARNA.surface,
+    color: colors.surface,
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.5,
@@ -350,13 +350,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalTitle: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 20,
     fontWeight: '800',
     textAlign: 'center',
   },
   modalSubtitle: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '500',
@@ -364,8 +364,8 @@ const styles = StyleSheet.create({
   },
   summaryBox: {
     alignSelf: 'stretch',
-    backgroundColor: WARNA.bg,
-    borderColor: WARNA.border,
+    backgroundColor: colors.bg,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 16,
     padding: 14,
@@ -378,19 +378,19 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   summaryLabel: {
-    color: WARNA.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },
   summaryValue: {
-    color: WARNA.text,
+    color: colors.text,
     fontSize: 13,
     fontWeight: '700',
     flex: 1,
     textAlign: 'right',
   },
   summaryValueHighlight: {
-    color: WARNA.primary,
+    color: colors.primary,
     fontSize: 13,
     fontWeight: '800',
     flex: 1,
@@ -400,14 +400,14 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     minHeight: 48,
     borderRadius: 14,
-    backgroundColor: WARNA.primary,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 20,
     paddingVertical: 12,
   },
   primaryButtonText: {
-    color: WARNA.surface,
+    color: colors.surface,
     fontSize: 15,
     fontWeight: '800',
   },

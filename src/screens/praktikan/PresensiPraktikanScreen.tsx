@@ -52,7 +52,6 @@ import {
   formatRentangJam,
   formatTanggalIndonesia,
   LABEL_STATUS,
-  normalisasiIdSesiLokal,
   simpanPresensiLokalTercatat,
   usePraktikanStore,
 } from '@/components/praktikan/praktikanStore';
@@ -154,12 +153,7 @@ export default function PresensiPraktikanScreen() {
 
   const sesiAktif = useMemo(() => {
     if (!paramSesiId) return null;
-    const normParam = normalisasiIdSesiLokal(paramSesiId);
-    return (
-      sesi.find(
-        (item) => item.id === paramSesiId || item.id === normParam,
-      ) ?? null
-    );
+    return sesi.find((item) => item.id === paramSesiId) ?? null;
   }, [paramSesiId, sesi]);
 
   const labIdAktif = sesiAktif?.labId;
