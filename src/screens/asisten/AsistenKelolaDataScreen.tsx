@@ -15,36 +15,34 @@ import { colors } from "../../constants/theme";
 import type {
   JadwalDoc,
   KelasDoc,
-  PesertaDoc,
   PraktikumDoc,
-  SesiDoc,
 } from "../../data/firestoreType";
-import { LABORATORIUM_TETAP } from "../../data/lokasi";
+import {
+  LABORATORIUM_TETAP,
+  type LaboratoriumDenganId,
+} from "../../data/lokasi";
 import { useAuth } from "../../hooks/useAuth";
-import PraktikanPicker from "../../components/asisten/PraktikanPicker";
 import {
   addDocument,
   firestoreRefs,
   listenCollection,
   pantauLaboratorium,
-  readCollection,
-  readDocument,
-  removeDocument,
   serverTimestamp,
-  setDocument,
+  tambahPeserta,
   updateDocument,
 } from "../../services/firebase/firestore";
 import { useDaftarPraktikan } from "./useDaftarPraktikan";
-import type { LabPeta } from "../../components/peta/PetaLab";
 
-type DataKind = "praktikum" | "kelas" | "peserta" | "jadwal";
+// Peserta tidak lagi menjadi tab sendiri: peserta adalah anak dari kelas
+// dan dikelola lewat tombol "Peserta" pada kartu kelas.
+type DataKind = "praktikum" | "kelas" | "jadwal";
 type RecordItem = { id: string; aktif: boolean };
 type PraktikumData = RecordItem & Pick<PraktikumDoc, "nama" | "deskripsi">;
 type KelasData = RecordItem &
   Pick<KelasDoc, "nama" | "praktikumId" | "labId" | "asistenUids">;
-type PesertaData = RecordItem & Pick<PesertaDoc, "uid"> & { kelasId: string };
+type PesertaData = RecordItem & { uid: string; nama: string; nim?: string };
 type JadwalData = RecordItem & Omit<JadwalDoc, "aktif">;
-type SesiData = SesiDoc & { id: string };
+type Choice = { id: string; label: string; disabled?: boolean };
 
 type Draft = {
   nama: string;
@@ -52,7 +50,6 @@ type Draft = {
   praktikumId: string;
   labId: string;
   kelasId: string;
-  uid: string;
   pertemuanKe: string;
   tanggal: string;
   jamMulai: string;
@@ -60,16 +57,17 @@ type Draft = {
   lokasi: string;
 };
 
+// Rules melarang delete pada praktikum, kelas, dan jadwal.
+// Satu-satunya "hapus" yang sah adalah menonaktifkan (aktif: false).
 type PendingAction = {
   kind: DataKind;
   id: string;
-  mode: "hapus" | "nonaktifkan" | "aktifkan";
+  mode: "nonaktifkan" | "aktifkan";
 };
 
 const TABS: { id: DataKind; label: string }[] = [
   { id: "praktikum", label: "Praktikum" },
   { id: "kelas", label: "Kelas" },
-  { id: "peserta", label: "Peserta" },
   { id: "jadwal", label: "Jadwal" },
 ];
 
@@ -79,13 +77,68 @@ const emptyDraft: Draft = {
   praktikumId: "",
   labId: "",
   kelasId: "",
-  uid: "",
   pertemuanKe: "",
   tanggal: "",
   jamMulai: "",
   jamSelesai: "",
   lokasi: "",
 };
+
+// Nama lab tetap dipakai sebagai teks lokasi pada jadwal (lab sesi = lab kelasnya).
+const LAB_CHOICES: Choice[] = LABORATORIUM_TETAP.map((lab) => ({
+  id: lab.nama,
+  label: lab.nama,
+}));
+
+const HARI = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+const BULAN = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "Mei",
+  "Jun",
+  "Jul",
+  "Agu",
+  "Sep",
+  "Okt",
+  "Nov",
+  "Des",
+];
+
+// Pilihan tanggal beberapa hari ke depan (Asia/Jakarta = UTC+7, tanpa DST).
+function buatPilihanTanggal(jumlah = 21): Choice[] {
+  const base = Date.now() + 7 * 60 * 60 * 1000;
+  return Array.from({ length: jumlah }, (_, i) => {
+    const d = new Date(base + i * 24 * 60 * 60 * 1000);
+    return {
+      id: d.toISOString().slice(0, 10),
+      label: `${HARI[d.getUTCDay()]} ${d.getUTCDate()} ${BULAN[d.getUTCMonth()]}`,
+    };
+  });
+}
+
+// Slot jam tiap 30 menit, 07:00 sampai 20:00.
+const JAM_CHOICES: Choice[] = (() => {
+  const out: Choice[] = [];
+  for (let h = 7; h <= 20; h++) {
+    const jam = String(h).padStart(2, "0");
+    out.push({ id: `${jam}:00`, label: `${jam}:00` });
+    if (h < 20) out.push({ id: `${jam}:30`, label: `${jam}:30` });
+  }
+  return out;
+})();
+
+// Pastikan nilai yang sedang dipilih (misalnya data lama) tetap muncul sebagai pilihan.
+function withCurrent(
+  choices: Choice[],
+  current: string,
+  sortById = false,
+): Choice[] {
+  if (!current || choices.some((c) => c.id === current)) return choices;
+  const merged = [{ id: current, label: current }, ...choices];
+  return sortById ? merged.sort((a, b) => a.id.localeCompare(b.id)) : merged;
+}
 
 function isValidDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -144,65 +197,77 @@ function ChoiceChips({
   choices,
   selectedId,
   onSelect,
+  horizontal,
+  emptyText = "Belum ada data induk.",
 }: {
   label: string;
-  choices: { id: string; label: string; disabled?: boolean }[];
+  choices: Choice[];
   selectedId: string;
   onSelect: (id: string) => void;
+  horizontal?: boolean;
+  emptyText?: string;
 }) {
+  const chips = choices.map((choice) => (
+    <Pressable
+      key={choice.id}
+      accessibilityRole="button"
+      accessibilityState={{
+        selected: choice.id === selectedId,
+        disabled: choice.disabled,
+      }}
+      disabled={choice.disabled}
+      onPress={() => onSelect(choice.id)}
+      style={[
+        styles.choice,
+        choice.id === selectedId && styles.choiceSelected,
+        choice.disabled && styles.choiceDisabled,
+      ]}
+    >
+      <Text
+        style={[
+          styles.choiceText,
+          choice.id === selectedId && styles.choiceTextSelected,
+        ]}
+      >
+        {choice.label}
+      </Text>
+    </Pressable>
+  ));
+
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
-      <View style={styles.choiceList}>
-        {choices.length ? (
-          choices.map((choice) => (
-            <Pressable
-              key={choice.id}
-              accessibilityRole="button"
-              accessibilityState={{
-                selected: choice.id === selectedId,
-                disabled: choice.disabled,
-              }}
-              disabled={choice.disabled}
-              onPress={() => onSelect(choice.id)}
-              style={[
-                styles.choice,
-                choice.id === selectedId && styles.choiceSelected,
-                choice.disabled && { opacity: 0.45 },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.choiceText,
-                  choice.id === selectedId && styles.choiceTextSelected,
-                ]}
-              >
-                {choice.label}
-              </Text>
-            </Pressable>
-          ))
+      {choices.length ? (
+        horizontal ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipScroll}
+          >
+            {chips}
+          </ScrollView>
         ) : (
-          <Text style={styles.helper}>Belum ada data induk.</Text>
-        )}
-      </View>
+          <View style={styles.choiceList}>{chips}</View>
+        )
+      ) : (
+        <Text style={styles.helper}>{emptyText}</Text>
+      )}
     </View>
   );
 }
+
+type CardAction = { label: string; onPress: () => void; secondary?: boolean };
 
 function RecordCard({
   title,
   detail,
   aktif,
-  onEdit,
-  onArchive,
-  actionLabel,
+  actions,
 }: {
   title: string;
   detail: string;
   aktif: boolean;
-  onEdit?: () => void;
-  onArchive: () => void;
-  actionLabel: string;
+  actions: CardAction[];
 }) {
   return (
     <View style={styles.card}>
@@ -221,24 +286,26 @@ function RecordCard({
         </Text>
       </View>
       <View style={styles.cardActions}>
-        {onEdit ? (
+        {actions.map((action) => (
           <Pressable
+            key={action.label}
             accessibilityRole="button"
-            onPress={onEdit}
-            style={styles.actionButton}
+            onPress={action.onPress}
+            style={[
+              styles.actionButton,
+              action.secondary && styles.secondaryAction,
+            ]}
           >
-            <Text style={styles.actionText}>Ubah</Text>
+            <Text
+              style={[
+                styles.actionText,
+                action.secondary && styles.secondaryActionText,
+              ]}
+            >
+              {action.label}
+            </Text>
           </Pressable>
-        ) : null}
-        <Pressable
-          accessibilityRole="button"
-          onPress={onArchive}
-          style={[styles.actionButton, styles.secondaryAction]}
-        >
-          <Text style={[styles.actionText, styles.secondaryActionText]}>
-            {actionLabel}
-          </Text>
-        </Pressable>
+        ))}
       </View>
     </View>
   );
@@ -246,52 +313,67 @@ function RecordCard({
 
 export default function AsistenKelolaDataScreen() {
   const { user, role } = useAuth();
+  const uid = user?.uid;
   const {
-    daftar: daftarPraktikan,
     petaByUid,
     loading: loadingPraktikan,
     error: errorPraktikan,
     muat: muatPraktikan,
   } = useDaftarPraktikan(role === "asisten");
+
   const [kind, setKind] = useState<DataKind>("praktikum");
   const [praktikum, setPraktikum] = useState<PraktikumData[]>([]);
   const [kelas, setKelas] = useState<KelasData[]>([]);
-  const [peserta, setPeserta] = useState<PesertaData[]>([]);
   const [jadwal, setJadwal] = useState<JadwalData[]>([]);
-  const [sesi, setSesi] = useState<SesiData[]>([]);
+  const [pesertaByKelas, setPesertaByKelas] = useState<
+    Record<string, PesertaData[]>
+  >({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [search, setSearch] = useState("");
+
+  // form praktikum / kelas / jadwal
   const [formOpen, setFormOpen] = useState(false);
   const [formKind, setFormKind] = useState<DataKind>("praktikum");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [formError, setFormError] = useState("");
+
+  // konfirmasi aktif/nonaktif
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(
     null,
   );
+  const [confirmError, setConfirmError] = useState("");
+
+  // peserta di dalam kelas
+  const [pesertaKelasId, setPesertaKelasId] = useState<string | null>(null);
+  const [addMode, setAddMode] = useState(false);
+  const [selectedUids, setSelectedUids] = useState<string[]>([]);
+  const [pesertaSearch, setPesertaSearch] = useState("");
+  const [pesertaMsg, setPesertaMsg] = useState("");
+
   const [busy, setBusy] = useState(false);
-  const [labs, setLabs] = useState<LabPeta[] | null>(null);
+  const [labs, setLabs] = useState<LaboratoriumDenganId[] | null>(null);
 
-  useEffect(
-    () => pantauLaboratorium(setLabs, () => setLabs(null)),
-    [],
-  );
+  const tanggalChoices = useMemo(() => buatPilihanTanggal(21), []);
 
+  // Status aktif lab untuk pilihan lab kelas (Rules: Asisten boleh membaca semua lab).
+  useEffect(() => {
+    if (role !== "asisten" || !user) return undefined;
+    return pantauLaboratorium(setLabs, () => setLabs(null));
+  }, [role, user]);
+
+  // 1. Koleksi induk. Rules mengizinkan semua Asisten membacanya.
   useEffect(() => {
     if (role !== "asisten" || !user) {
       setLoading(false);
       return undefined;
     }
 
-    const uid = user.uid;
-
     setLoading(true);
     setError("");
     const unsubscribers: (() => void)[] = [];
-    const participantUnsubscribers = new Map<string, () => void>();
-    const participantsByClass = new Map<string, PesertaData[]>();
 
     const onError = (reason: unknown) => {
       setError(errorMessage(reason));
@@ -317,97 +399,129 @@ export default function AsistenKelolaDataScreen() {
     );
     unsubscribers.push(
       listenCollection(
-        firestoreRefs.jadwal(),
-        (items) => setJadwal(items.map((item) => ({ ...item }))),
+        firestoreRefs.kelas(),
+        (items) => setKelas(items.map((item) => ({ ...item }))),
         onError,
       ),
     );
     unsubscribers.push(
       listenCollection(
-        firestoreRefs.sesi(),
-        (items) => setSesi(items.map((item) => ({ ...item }))),
+        firestoreRefs.jadwal(),
+        (items) => setJadwal(items.map((item) => ({ ...item }))),
         onError,
       ),
     );
-    unsubscribers.push(
-  listenCollection(
-    firestoreRefs.kelas(),
-    (items) => {
-      const kelasSaya = items.filter(
-        (item) =>
-          Array.isArray(item.asistenUids) &&
-          item.asistenUids.includes(uid),
-      );
-
-      setKelas(kelasSaya.map((item) => ({ ...item })));
-
-      const activeIds = new Set(kelasSaya.map((item) => item.id));
-
-      for (const [kelasId, unsubscribe] of participantUnsubscribers) {
-        if (!activeIds.has(kelasId)) {
-          unsubscribe();
-          participantUnsubscribers.delete(kelasId);
-          participantsByClass.delete(kelasId);
-        }
-      }
-
-      setPeserta(Array.from(participantsByClass.values()).flat());
-
-      for (const item of kelasSaya) {
-        if (participantUnsubscribers.has(item.id)) continue;
-
-        participantUnsubscribers.set(
-          item.id,
-          listenCollection(
-            firestoreRefs.peserta(item.id),
-            (participantItems) => {
-              participantsByClass.set(
-                item.id,
-                participantItems.map((participant) => ({
-                  id: participant.id,
-                  uid: participant.uid,
-                  kelasId: item.id,
-                  aktif: participant.aktif,
-                })),
-              );
-
-              setPeserta(Array.from(participantsByClass.values()).flat());
-            },
-            onError,
-          ),
-        );
-      }
-    },
-    onError,
-  ),
-);
 
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
-      participantUnsubscribers.forEach((unsubscribe) => unsubscribe());
     };
   }, [role, user]);
 
-  const classChoices = useMemo(
+  // Kelas yang boleh dikelola = kelas yang UID-nya ada di asistenUids (syarat Rules).
+  const kelasSaya = useMemo(
     () =>
-      kelas
+      uid
+        ? kelas.filter(
+            (k) => Array.isArray(k.asistenUids) && k.asistenUids.includes(uid),
+          )
+        : [],
+    [kelas, uid],
+  );
+  const kelasSayaIdKey = useMemo(
+    () =>
+      kelasSaya
+        .map((k) => k.id)
+        .sort()
+        .join(","),
+    [kelasSaya],
+  );
+  const kelasSayaIds = useMemo(
+    () => new Set(kelasSaya.map((k) => k.id)),
+    [kelasSaya],
+  );
+
+  // 2. Peserta hanya untuk kelas milik saya (subkoleksi peserta dibatasi Rules).
+  useEffect(() => {
+    if (!kelasSayaIdKey) {
+      setPesertaByKelas({});
+      return undefined;
+    }
+
+    const unsubs = kelasSayaIdKey.split(",").map((kelasId) =>
+      listenCollection(
+        firestoreRefs.peserta(kelasId),
+        (items) =>
+          setPesertaByKelas((prev) => ({
+            ...prev,
+            [kelasId]: items.map((p) => ({
+              id: p.id,
+              uid: p.uid,
+              nama: p.nama,
+              nim: p.nim,
+              aktif: p.aktif,
+            })),
+          })),
+        (reason) => setError(errorMessage(reason)),
+      ),
+    );
+
+    return () => {
+      unsubs.forEach((unsub) => unsub());
+    };
+  }, [kelasSayaIdKey]);
+
+  const jadwalSaya = useMemo(
+    () =>
+      jadwal
+        .filter((item) => kelasSayaIds.has(item.kelasId))
+        .sort((a, b) =>
+          `${a.tanggal} ${a.jamMulai}`.localeCompare(
+            `${b.tanggal} ${b.jamMulai}`,
+          ),
+        ),
+    [jadwal, kelasSayaIds],
+  );
+
+  function namaPraktikum(praktikumId: string) {
+    return (
+      praktikum.find((course) => course.id === praktikumId)?.nama ??
+      "Praktikum tidak ditemukan"
+    );
+  }
+  function namaKelas(kelasId: string) {
+    return kelas.find((item) => item.id === kelasId)?.nama ?? "-";
+  }
+  function jumlahPesertaAktif(kelasId: string) {
+    return (pesertaByKelas[kelasId] ?? []).filter((p) => p.aktif).length;
+  }
+
+  const classChoices = useMemo<Choice[]>(
+    () =>
+      kelasSaya
         .filter((item) => item.aktif)
         .map((item) => ({
           id: item.id,
           label: `${item.nama} · ${praktikum.find((course) => course.id === item.praktikumId)?.nama ?? "Praktikum"}`,
         })),
-    [kelas, praktikum],
+    [kelasSaya, praktikum],
   );
-  const terdaftarDiKelas = useMemo(
-    () =>
-      new Map(
-        peserta
-          .filter((p) => p.kelasId === draft.kelasId)
-          .map((p) => [p.uid, p.aktif] as const),
-      ),
-    [peserta, draft.kelasId],
-  );
-  const pilihanLab = useMemo(
+
+  function namaLab(labId?: string) {
+    if (!labId) return "Lab belum dipilih";
+    return (
+      labs?.find((lab) => lab.id === labId)?.nama ??
+      LABORATORIUM_TETAP.find((lab) => lab.id === labId)?.nama ??
+      "Lab tidak dikenal"
+    );
+  }
+
+  // Lokasi jadwal mengikuti lab kelasnya (teks tampilan; Rules memakai kelas.labId).
+  function lokasiKelas(kelasId: string) {
+    const labId = kelasSaya.find((item) => item.id === kelasId)?.labId;
+    return LABORATORIUM_TETAP.find((lab) => lab.id === labId)?.nama ?? "";
+  }
+
+  const pilihanLab = useMemo<Choice[]>(
     () =>
       LABORATORIUM_TETAP.map((lab) => {
         const nonaktif = labs?.find((l) => l.id === lab.id)?.aktif === false;
@@ -421,37 +535,167 @@ export default function AsistenKelolaDataScreen() {
     [labs, draft.labId],
   );
 
-  const filtered = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase("id-ID");
-    if (kind === "praktikum")
-      return praktikum.filter((item) =>
-        `${item.nama} ${item.deskripsi}`
-          .toLocaleLowerCase("id-ID")
-          .includes(query),
-      );
-    if (kind === "kelas")
-      return kelas.filter((item) =>
-        `${item.nama} ${praktikum.find((course) => course.id === item.praktikumId)?.nama ?? ""}`
-          .toLocaleLowerCase("id-ID")
-          .includes(query),
-      );
-    if (kind === "peserta")
-      return peserta.filter((item) => {
-        const profil = petaByUid.get(item.uid);
-        const namaKelas = kelas.find((entry) => entry.id === item.kelasId)?.nama ?? "";
-        return `${profil?.nama ?? ""} ${profil?.nim ?? ""} ${item.uid} ${namaKelas}`
-          .toLocaleLowerCase("id-ID")
-          .includes(query);
-      });
-    return jadwal.filter((item) =>
-      `${item.tanggal} ${item.lokasi} ${kelas.find((entry) => entry.id === item.kelasId)?.nama ?? ""}`
-        .toLocaleLowerCase("id-ID")
-        .includes(query),
-    );
-  }, [kind, jadwal, kelas, peserta, praktikum, search, petaByUid]);
+  const q = search.trim().toLocaleLowerCase("id-ID");
+  const cocok = (text: string) => text.toLocaleLowerCase("id-ID").includes(q);
 
+  const praktikumFiltered = praktikum.filter((item) =>
+    cocok(`${item.nama} ${item.deskripsi}`),
+  );
+  const kelasFiltered = kelasSaya.filter((item) =>
+    cocok(`${item.nama} ${namaPraktikum(item.praktikumId)}`),
+  );
+  const jadwalFiltered = jadwalSaya.filter((item) =>
+    cocok(`${item.tanggal} ${item.lokasi} ${namaKelas(item.kelasId)}`),
+  );
+
+  const filteredCount =
+    kind === "praktikum"
+      ? praktikumFiltered.length
+      : kind === "kelas"
+        ? kelasFiltered.length
+        : jadwalFiltered.length;
+  const activeCount = (
+    kind === "praktikum" ? praktikum : kind === "kelas" ? kelasSaya : jadwalSaya
+  ).filter((item) => item.aktif).length;
+
+  // ---- Peserta di dalam kelas ----
+  const pesertaKelas = kelasSaya.find((k) => k.id === pesertaKelasId) ?? null;
+  const pesertaList = useMemo(
+    () =>
+      [...(pesertaKelasId ? (pesertaByKelas[pesertaKelasId] ?? []) : [])].sort(
+        (a, b) =>
+          (petaByUid.get(a.uid)?.nama ?? a.nama).localeCompare(
+            petaByUid.get(b.uid)?.nama ?? b.nama,
+            "id-ID",
+          ),
+      ),
+    [pesertaByKelas, pesertaKelasId, petaByUid],
+  );
+
+  const kandidat = useMemo(() => {
+    const query = pesertaSearch.trim().toLocaleLowerCase("id-ID");
+    const status = new Map(pesertaList.map((p) => [p.uid, p.aktif] as const));
+    return Array.from(petaByUid.entries())
+      .map(([praktikanUid, profil]) => {
+        let terdaftar: "aktif" | "nonaktif" | null = null;
+        if (status.has(praktikanUid))
+          terdaftar = status.get(praktikanUid) ? "aktif" : "nonaktif";
+        return {
+          uid: praktikanUid,
+          nama: profil?.nama ?? praktikanUid,
+          nim: profil?.nim ?? "",
+          terdaftar,
+        };
+      })
+      .filter((k) =>
+        `${k.nama} ${k.nim}`.toLocaleLowerCase("id-ID").includes(query),
+      )
+      .sort((a, b) => a.nama.localeCompare(b.nama, "id-ID"));
+  }, [petaByUid, pesertaList, pesertaSearch]);
+
+  function bukaPeserta(kelasId: string) {
+    setPesertaKelasId(kelasId);
+    setAddMode(false);
+    setSelectedUids([]);
+    setPesertaSearch("");
+    setPesertaMsg("");
+  }
+
+  function tutupPeserta() {
+    setPesertaKelasId(null);
+    setAddMode(false);
+    setSelectedUids([]);
+    setPesertaSearch("");
+    setPesertaMsg("");
+  }
+
+  function masukModeTambah() {
+    setAddMode(true);
+    setSelectedUids([]);
+    setPesertaSearch("");
+    setPesertaMsg("");
+    void muatPraktikan();
+  }
+
+  function togglePilihan(praktikanUid: string) {
+    setSelectedUids((current) =>
+      current.includes(praktikanUid)
+        ? current.filter((item) => item !== praktikanUid)
+        : [...current, praktikanUid],
+    );
+  }
+
+  async function tambahkanPeserta() {
+    if (!pesertaKelasId || selectedUids.length === 0) return;
+    setBusy(true);
+    setPesertaMsg("");
+    let berhasil = 0;
+    let pesanGagal = "";
+    // Berurutan: tiap penambahan ikut memperbarui dokumen kelas (praktikanUids).
+    for (const praktikanUid of selectedUids) {
+      try {
+        await tambahPeserta(
+          pesertaKelasId,
+          praktikanUid,
+          petaByUid.get(praktikanUid)?.nama ?? "",
+        );
+        berhasil += 1;
+      } catch (reason) {
+        pesanGagal = errorMessage(reason);
+      }
+    }
+    setBusy(false);
+    const gagal = selectedUids.length - berhasil;
+    if (gagal === 0) {
+      setAddMode(false);
+      setSelectedUids([]);
+      setPesertaMsg(`${berhasil} peserta ditambahkan.`);
+    } else {
+      setPesertaMsg(
+        `${berhasil} berhasil, ${gagal} gagal. ${pesanGagal}`.trim(),
+      );
+    }
+  }
+
+  async function ubahStatusPeserta(praktikanUid: string, aktif: boolean) {
+    if (!pesertaKelasId) return;
+    try {
+      setBusy(true);
+      setPesertaMsg("");
+      await updateDocument(
+        firestoreRefs.pesertaDoc(pesertaKelasId, praktikanUid),
+        { aktif },
+      );
+    } catch (reason) {
+      setPesertaMsg(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // ---- Form praktikum / kelas / jadwal ----
   function updateDraft(field: keyof Draft, value: string) {
     setDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  function pertemuanBerikutnya(kelasId: string) {
+    const nomor = jadwal
+      .filter((item) => item.kelasId === kelasId)
+      .map((item) => item.pertemuanKe);
+    return String((nomor.length ? Math.max(...nomor) : 0) + 1);
+  }
+
+  function pilihKelasJadwal(kelasId: string) {
+    setDraft((current) => ({
+      ...current,
+      kelasId,
+      // saat membuat jadwal baru, nomor pertemuan diisi otomatis
+      pertemuanKe: editingId
+        ? current.pertemuanKe
+        : pertemuanBerikutnya(kelasId),
+      // lokasi mengikuti lab kelas (masih bisa diganti lewat chip lab)
+      lokasi: editingId ? current.lokasi : lokasiKelas(kelasId) || current.lokasi,
+    }));
   }
 
   function openForm(nextKind: DataKind, id?: string) {
@@ -466,7 +710,7 @@ export default function AsistenKelolaDataScreen() {
         deskripsi: item?.deskripsi ?? "",
       });
     } else if (nextKind === "kelas") {
-      const item = kelas.find((entry) => entry.id === id);
+      const item = kelasSaya.find((entry) => entry.id === id);
       setDraft({
         ...emptyDraft,
         nama: item?.nama ?? "",
@@ -474,27 +718,24 @@ export default function AsistenKelolaDataScreen() {
           item?.praktikumId ?? praktikum.find((entry) => entry.aktif)?.id ?? "",
         labId: item?.labId ?? "",
       });
-    } else if (nextKind === "peserta") {
-      const item = peserta.find((entry) => entry.id === id);
-      setDraft({
-        ...emptyDraft,
-        uid: item?.uid ?? "",
-        kelasId: item?.kelasId ?? classChoices[0]?.id ?? "",
-      });
     } else {
       const item = jadwal.find((entry) => entry.id === id);
+      const kelasAwal = item?.kelasId ?? classChoices[0]?.id ?? "";
       setDraft({
         ...emptyDraft,
-        kelasId: item?.kelasId ?? classChoices[0]?.id ?? "",
-        pertemuanKe: item ? String(item.pertemuanKe) : "",
+        kelasId: kelasAwal,
+        pertemuanKe: item
+          ? String(item.pertemuanKe)
+          : kelasAwal
+            ? pertemuanBerikutnya(kelasAwal)
+            : "",
         tanggal: item?.tanggal ?? "",
         jamMulai: item?.jamMulai ?? "",
         jamSelesai: item?.jamSelesai ?? "",
-        lokasi: item?.lokasi ?? "",
+        lokasi: item?.lokasi ?? lokasiKelas(kelasAwal),
       });
     }
     setFormOpen(true);
-    if (nextKind === "peserta") void muatPraktikan();
   }
 
   async function saveRecord() {
@@ -503,10 +744,10 @@ export default function AsistenKelolaDataScreen() {
       setFormError("");
       if (formKind === "praktikum") {
         if (!draft.nama.trim()) throw new Error("Nama praktikum wajib diisi.");
+        // Edit tidak mengirim `aktif` agar status tidak berubah diam-diam.
         const value = {
           nama: draft.nama.trim(),
           deskripsi: draft.deskripsi.trim(),
-          aktif: true,
           updatedAt: serverTimestamp(),
         };
         if (editingId)
@@ -514,44 +755,40 @@ export default function AsistenKelolaDataScreen() {
         else
           await addDocument(firestoreRefs.praktikum(), {
             ...value,
+            aktif: true,
             praktikanUids: [],
             createdAt: serverTimestamp(),
           });
       } else if (formKind === "kelas") {
         if (!draft.nama.trim() || !draft.praktikumId || !draft.labId)
-          throw new Error("Nama kelas, praktikum, dan laboratorium wajib dipilih.");
-          const labDipilih = labs?.find((l) => l.id === draft.labId);
-          const labLama = kelas.find((k) => k.id === editingId)?.labId;
-          if (labDipilih?.aktif === false && draft.labId !== labLama)
-           throw new Error("Laboratorium nonaktif tidak dapat dipilih untuk kelas ini.");
+          throw new Error(
+            "Nama kelas, praktikum, dan laboratorium wajib dipilih.",
+          );
+        const labDipilih = labs?.find((lab) => lab.id === draft.labId);
+        const labLama = kelasSaya.find((item) => item.id === editingId)?.labId;
+        if (labDipilih?.aktif === false && draft.labId !== labLama)
+          throw new Error(
+            "Laboratorium nonaktif tidak dapat dipilih untuk kelas ini.",
+          );
         const value = {
           praktikumId: draft.praktikumId,
           labId: draft.labId,
           nama: draft.nama.trim(),
-          asistenUids: [user?.uid ?? ""],
-          aktif: true,
           updatedAt: serverTimestamp(),
         };
-        if (editingId)
+        if (editingId) {
+          // asistenUids tidak dikirim: Rules mensyaratkan nilainya tidak berubah.
           await updateDocument(firestoreRefs.kelasDoc(editingId), value);
-        else
+        } else {
+          if (!uid) throw new Error("Sesi login tidak ditemukan.");
           await addDocument(firestoreRefs.kelas(), {
             ...value,
+            asistenUids: [uid],
             praktikanUids: [],
+            aktif: true,
             createdAt: serverTimestamp(),
           });
-      } else if (formKind === "peserta") {
-        if (!draft.kelasId) throw new Error("Pilih kelas terlebih dahulu.");
-        if (!draft.uid || !petaByUid.has(draft.uid))
-          throw new Error("Pilih Praktikan dari daftar.");
-        if (peserta.some((p) => p.kelasId === draft.kelasId && p.uid === draft.uid))
-          throw new Error("Praktikan ini sudah terdaftar di kelas tersebut.");
-        await setDocument(firestoreRefs.pesertaDoc(draft.kelasId, draft.uid), {
-          uid: draft.uid,
-          nama: petaByUid.get(draft.uid)?.nama ?? "",
-          aktif: true,
-          joinedAt: serverTimestamp(),
-        });
+        }
       } else {
         const pertemuanKe = Number(draft.pertemuanKe);
         const validJam = (value: string) =>
@@ -569,6 +806,17 @@ export default function AsistenKelolaDataScreen() {
           throw new Error(
             "Lengkapi kelas, pertemuan, tanggal, jam, dan lokasi.",
           );
+        if (
+          jadwal.some(
+            (item) =>
+              item.id !== editingId &&
+              item.kelasId === draft.kelasId &&
+              item.pertemuanKe === pertemuanKe,
+          )
+        )
+          throw new Error(
+            `Pertemuan ${pertemuanKe} sudah ada di kelas ini.`,
+          );
         const value = {
           kelasId: draft.kelasId,
           pertemuanKe,
@@ -576,11 +824,11 @@ export default function AsistenKelolaDataScreen() {
           jamMulai: draft.jamMulai,
           jamSelesai: draft.jamSelesai,
           lokasi: draft.lokasi.trim(),
-          aktif: true,
         };
         if (editingId)
           await updateDocument(firestoreRefs.jadwalDoc(editingId), value);
-        else await addDocument(firestoreRefs.jadwal(), value);
+        else
+          await addDocument(firestoreRefs.jadwal(), { ...value, aktif: true });
       }
       setFormOpen(false);
       setFeedback("Data berhasil disimpan.");
@@ -593,131 +841,41 @@ export default function AsistenKelolaDataScreen() {
     }
   }
 
-  async function findHistory(targetKind: DataKind, id: string) {
-    const sessions = (await readCollection(firestoreRefs.sesi())) as SesiData[];
-    let targetSessionIds: string[];
-    if (targetKind === "jadwal")
-      targetSessionIds = sessions
-        .filter((item) => item.jadwalId === id)
-        .map((item) => item.id);
-    else if (targetKind === "kelas") {
-      const scheduleIds = new Set(
-        jadwal.filter((item) => item.kelasId === id).map((item) => item.id),
-      );
-      targetSessionIds = sessions
-        .filter(
-          (item) =>
-            item.kelasId === id ||
-            (item.jadwalId && scheduleIds.has(item.jadwalId)),
-        )
-        .map((item) => item.id);
-    } else if (targetKind === "praktikum") {
-      const classIds = new Set(
-        kelas.filter((item) => item.praktikumId === id).map((item) => item.id),
-      );
-      const scheduleIds = new Set(
-        jadwal
-          .filter((item) => classIds.has(item.kelasId))
-          .map((item) => item.id),
-      );
-      targetSessionIds = sessions
-        .filter(
-          (item) =>
-            (item.kelasId && classIds.has(item.kelasId)) ||
-            (item.jadwalId && scheduleIds.has(item.jadwalId)),
-        )
-        .map((item) => item.id);
-    } else {
-      const participant = peserta.find((item) => item.id === id);
-      const classSessions = sessions.filter(
-        (item) => item.kelasId === participant?.kelasId,
-      );
-      for (const item of classSessions) {
-        const [attendance, request] = await Promise.all([
-          readDocument(
-            firestoreRefs.presensiDoc(item.id, participant?.uid ?? ""),
-          ),
-          readDocument(
-            firestoreRefs.pengajuanIzinDoc(item.id, participant?.uid ?? ""),
-          ),
-        ]);
-        if (attendance || request) return true;
-      }
-      return false;
-    }
-    return targetSessionIds.length > 0;
-  }
-
-  async function prepareArchive(
-    targetKind: DataKind,
-    id: string,
-    aktif: boolean,
-  ) {
-    if (!aktif) {
-      setPendingAction({ kind: targetKind, id, mode: "aktifkan" });
-      return;
-    }
-    try {
-      setBusy(true);
-      const hasHistory = await findHistory(targetKind, id);
-      setPendingAction({
-        kind: targetKind,
-        id,
-        mode: hasHistory ? "nonaktifkan" : "hapus",
-      });
-    } catch (reason) {
-      setError(errorMessage(reason));
-    } finally {
-      setBusy(false);
-    }
+  // ---- Aktifkan / nonaktifkan (pengganti hapus) ----
+  function prepareToggle(targetKind: DataKind, id: string, aktif: boolean) {
+    setConfirmError("");
+    setPendingAction({
+      kind: targetKind,
+      id,
+      mode: aktif ? "nonaktifkan" : "aktifkan",
+    });
   }
 
   async function confirmAction() {
     if (!pendingAction) return;
     const { kind: targetKind, id, mode } = pendingAction;
+    const aktif = mode === "aktifkan";
     try {
       setBusy(true);
-      if (targetKind === "praktikum") {
-        if (mode === "hapus")
-          await removeDocument(firestoreRefs.praktikumDoc(id));
-        else
-          await updateDocument(firestoreRefs.praktikumDoc(id), {
-            aktif: mode === "aktifkan",
-            updatedAt: serverTimestamp(),
-          });
-      } else if (targetKind === "kelas") {
-        if (mode === "hapus") await removeDocument(firestoreRefs.kelasDoc(id));
-        else
-          await updateDocument(firestoreRefs.kelasDoc(id), {
-            aktif: mode === "aktifkan",
-            updatedAt: serverTimestamp(),
-          });
-      } else if (targetKind === "jadwal") {
-        if (mode === "hapus") await removeDocument(firestoreRefs.jadwalDoc(id));
-        else
-          await updateDocument(firestoreRefs.jadwalDoc(id), {
-            aktif: mode === "aktifkan",
-          });
-      } else {
-        const item = peserta.find((entry) => entry.id === id);
-        if (item) {
-          if (mode === "hapus")
-            await removeDocument(
-              firestoreRefs.pesertaDoc(item.kelasId, item.uid),
-            );
-          else
-            await updateDocument(
-              firestoreRefs.pesertaDoc(item.kelasId, item.uid),
-              { aktif: mode === "aktifkan" },
-            );
-        }
-      }
+      setConfirmError("");
+      if (targetKind === "praktikum")
+        await updateDocument(firestoreRefs.praktikumDoc(id), {
+          aktif,
+          updatedAt: serverTimestamp(),
+        });
+      else if (targetKind === "kelas")
+        await updateDocument(firestoreRefs.kelasDoc(id), {
+          aktif,
+          updatedAt: serverTimestamp(),
+        });
+      else await updateDocument(firestoreRefs.jadwalDoc(id), { aktif });
       setFeedback(
-        `Data berhasil ${mode === "hapus" ? "dihapus" : mode === "aktifkan" ? "diaktifkan" : "dinonaktifkan"}.`,
+        `Data berhasil ${aktif ? "diaktifkan" : "dinonaktifkan"}.`,
       );
       setPendingAction(null);
     } catch (reason) {
-      setError(errorMessage(reason));
+      // Error ditampilkan di dalam modal konfirmasi agar tidak tertutup.
+      setConfirmError(errorMessage(reason));
     } finally {
       setBusy(false);
     }
@@ -725,82 +883,56 @@ export default function AsistenKelolaDataScreen() {
 
   function renderRecords() {
     if (kind === "praktikum")
-      return praktikum
-        .filter((item) =>
-          `${item.nama} ${item.deskripsi}`
-            .toLocaleLowerCase("id-ID")
-            .includes(search.trim().toLocaleLowerCase("id-ID")),
-        )
-        .map((item) => (
-          <RecordCard
-            key={item.id}
-            title={item.nama}
-            detail={item.deskripsi || "Tanpa deskripsi"}
-            aktif={item.aktif}
-            onEdit={() => openForm("praktikum", item.id)}
-            onArchive={() => prepareArchive("praktikum", item.id, item.aktif)}
-            actionLabel={item.aktif ? "Kelola" : "Aktifkan"}
-          />
-        ));
-    if (kind === "kelas")
-      return kelas
-        .filter((item) =>
-          `${item.nama} ${item.praktikumId}`
-            .toLocaleLowerCase("id-ID")
-            .includes(search.trim().toLocaleLowerCase("id-ID")),
-        )
-        .map((item) => (
-          <RecordCard
-            key={item.id}
-            title={`Kelas ${item.nama}`}
-            detail={`Praktikum ${
-              praktikum.find((course) => course.id === item.praktikumId)?.nama ??
-              "Praktikum"
-            } · ${
-              LABORATORIUM_TETAP.find((lab) => lab.id === item.labId)?.nama ??
-              "Lab belum dipilih"
-            } · ${item.asistenUids.length} Asisten`}
-            aktif={item.aktif}
-            onEdit={() => openForm("kelas", item.id)}
-            onArchive={() => prepareArchive("kelas", item.id, item.aktif)}
-            actionLabel={item.aktif ? "Kelola" : "Aktifkan"}
-          />
-        ));
-    if (kind === "peserta")
-      return (filtered as PesertaData[]).map((item) => {
-        const profil = petaByUid.get(item.uid);
-        const namaKelas =
-          kelas.find((entry) => entry.id === item.kelasId)?.nama ?? item.kelasId;
-        return (
-          <RecordCard
-            key={item.id}
-            title={profil?.nama ?? item.uid}
-            detail={`${profil?.nim ? `NIM ${profil.nim} · ` : ""}Kelas ${namaKelas}`}
-            aktif={item.aktif}
-            onArchive={() => prepareArchive("peserta", item.id, item.aktif)}
-            actionLabel={item.aktif ? "Kelola" : "Aktifkan"}
-          />
-        );
-      });
-    return jadwal
-      .filter((item) =>
-        `${item.tanggal} ${item.lokasi} ${item.kelasId}`
-          .toLocaleLowerCase("id-ID")
-          .includes(search.trim().toLocaleLowerCase("id-ID")),
-      )
-      .map((item) => (
+      return praktikumFiltered.map((item) => (
         <RecordCard
           key={item.id}
-          title={`Pertemuan ${item.pertemuanKe} · ${item.tanggal}`}
-          detail={`Kelas ${
-            kelas.find((entry) => entry.id === item.kelasId)?.nama
-          } · ${item.jamMulai}–${item.jamSelesai} · ${item.lokasi}`}
+          title={item.nama}
+          detail={item.deskripsi || "Tanpa deskripsi"}
           aktif={item.aktif}
-          onEdit={() => openForm("jadwal", item.id)}
-          onArchive={() => prepareArchive("jadwal", item.id, item.aktif)}
-          actionLabel={item.aktif ? "Kelola" : "Aktifkan"}
+          actions={[
+            { label: "Ubah", onPress: () => openForm("praktikum", item.id) },
+            {
+              label: item.aktif ? "Nonaktifkan" : "Aktifkan",
+              secondary: true,
+              onPress: () => prepareToggle("praktikum", item.id, item.aktif),
+            },
+          ]}
         />
       ));
+    if (kind === "kelas")
+      return kelasFiltered.map((item) => (
+        <RecordCard
+          key={item.id}
+          title={`Kelas ${item.nama}`}
+          detail={`${namaPraktikum(item.praktikumId)} · ${namaLab(item.labId)} · ${jumlahPesertaAktif(item.id)} peserta aktif`}
+          aktif={item.aktif}
+          actions={[
+            { label: "Peserta", onPress: () => bukaPeserta(item.id) },
+            { label: "Ubah", onPress: () => openForm("kelas", item.id) },
+            {
+              label: item.aktif ? "Nonaktifkan" : "Aktifkan",
+              secondary: true,
+              onPress: () => prepareToggle("kelas", item.id, item.aktif),
+            },
+          ]}
+        />
+      ));
+    return jadwalFiltered.map((item) => (
+      <RecordCard
+        key={item.id}
+        title={`Pertemuan ${item.pertemuanKe} · ${item.tanggal}`}
+        detail={`Kelas ${namaKelas(item.kelasId)} · ${item.jamMulai}–${item.jamSelesai} · ${item.lokasi}`}
+        aktif={item.aktif}
+        actions={[
+          { label: "Ubah", onPress: () => openForm("jadwal", item.id) },
+          {
+            label: item.aktif ? "Nonaktifkan" : "Aktifkan",
+            secondary: true,
+            onPress: () => prepareToggle("jadwal", item.id, item.aktif),
+          },
+        ]}
+      />
+    ));
   }
 
   function renderFields() {
@@ -846,33 +978,14 @@ export default function AsistenKelolaDataScreen() {
           />
         </>
       );
-    if (formKind === "peserta")
-      return (
-        <>
-          <ChoiceChips
-            label="Kelas"
-            choices={classChoices}
-            selectedId={draft.kelasId}
-            onSelect={(value) => updateDraft("kelasId", value)}
-          />
-          <PraktikanPicker
-            daftar={daftarPraktikan}
-            terdaftar={terdaftarDiKelas}
-            selectedUid={draft.uid}
-            onSelect={(uid) => updateDraft("uid", uid)}
-            loading={loadingPraktikan}
-            error={errorPraktikan}
-            onRetry={muatPraktikan}
-          />
-        </>
-      );
     return (
       <>
         <ChoiceChips
           label="Kelas"
           choices={classChoices}
           selectedId={draft.kelasId}
-          onSelect={(value) => updateDraft("kelasId", value)}
+          onSelect={pilihKelasJadwal}
+          emptyText="Belum ada kelas aktif yang Anda kelola."
         />
         <Field
           label="Pertemuan ke"
@@ -881,51 +994,60 @@ export default function AsistenKelolaDataScreen() {
           placeholder="1"
           keyboardType="numeric"
         />
+        <ChoiceChips
+          label="Tanggal"
+          horizontal
+          choices={withCurrent(tanggalChoices, draft.tanggal)}
+          selectedId={draft.tanggal}
+          onSelect={(value) => updateDraft("tanggal", value)}
+        />
         <Field
-          label="Tanggal YYYY-MM-DD"
+          label="Atau ketik tanggal (YYYY-MM-DD)"
           value={draft.tanggal}
           onChangeText={(value) => updateDraft("tanggal", value)}
-          placeholder="2026-11-14"
+          placeholder="2026-11-24"
         />
-        <View style={styles.inline}>
-          <Field
-            label="Mulai"
-            value={draft.jamMulai}
-            onChangeText={(value) => updateDraft("jamMulai", value)}
-            placeholder="08:00"
-          />
-          <Field
-            label="Selesai"
-            value={draft.jamSelesai}
-            onChangeText={(value) => updateDraft("jamSelesai", value)}
-            placeholder="10:00"
-          />
-        </View>
-        <Field
-          label="Lokasi"
-          value={draft.lokasi}
-          onChangeText={(value) => updateDraft("lokasi", value)}
-          placeholder="Laboratorium"
+        <ChoiceChips
+          label="Jam mulai"
+          horizontal
+          choices={withCurrent(JAM_CHOICES, draft.jamMulai, true)}
+          selectedId={draft.jamMulai}
+          onSelect={(value) => updateDraft("jamMulai", value)}
+        />
+        <ChoiceChips
+          label="Jam selesai"
+          horizontal
+          choices={withCurrent(
+            JAM_CHOICES.filter(
+              (jam) => !draft.jamMulai || jam.id > draft.jamMulai,
+            ),
+            draft.jamSelesai,
+            true,
+          )}
+          selectedId={draft.jamSelesai}
+          onSelect={(value) => updateDraft("jamSelesai", value)}
+        />
+        <ChoiceChips
+          label="Lokasi lab"
+          choices={withCurrent(LAB_CHOICES, draft.lokasi)}
+          selectedId={draft.lokasi}
+          onSelect={(value) => updateDraft("lokasi", value)}
         />
       </>
     );
   }
 
-  const pendingText =
-    pendingAction?.mode === "hapus"
-      ? "Hapus"
-      : pendingAction?.mode === "aktifkan"
-        ? "Aktifkan"
-        : "Nonaktifkan";
-  const activeCount = (
-    kind === "praktikum"
-      ? praktikum
-      : kind === "kelas"
-        ? kelas
-        : kind === "peserta"
-          ? peserta
-          : jadwal
-  ).filter((item) => item.aktif).length;
+  const pendingText = pendingAction?.mode === "aktifkan" ? "Aktifkan" : "Nonaktifkan";
+  const pendingBody = (() => {
+    if (!pendingAction) return "";
+    if (pendingAction.mode === "aktifkan")
+      return "Data akan diaktifkan kembali.";
+    if (pendingAction.kind === "praktikum")
+      return "Praktikum dinonaktifkan dan tidak bisa dipilih untuk kelas baru. Data dan riwayat tetap tersimpan.";
+    if (pendingAction.kind === "kelas")
+      return "Kelas dinonaktifkan. Praktikan di kelas ini tidak dapat melihat jadwal dan sesi sampai kelas diaktifkan kembali. Data dan riwayat tetap tersimpan.";
+    return "Jadwal dinonaktifkan. Data tetap tersimpan dan bisa diaktifkan kembali.";
+  })();
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
@@ -991,7 +1113,7 @@ export default function AsistenKelolaDataScreen() {
             <Text style={styles.sectionTitle}>
               {TABS.find((item) => item.id === kind)?.label}
             </Text>
-            <Text style={styles.helper}>{filtered.length} data</Text>
+            <Text style={styles.helper}>{filteredCount} data</Text>
           </View>
           <Pressable
             accessibilityRole="button"
@@ -1014,7 +1136,7 @@ export default function AsistenKelolaDataScreen() {
             <ActivityIndicator color={colors.primary} />
             <Text style={styles.helper}>Memuat data Firestore...</Text>
           </View>
-        ) : filtered.length ? (
+        ) : filteredCount ? (
           renderRecords()
         ) : (
           <View style={styles.state}>
@@ -1026,6 +1148,7 @@ export default function AsistenKelolaDataScreen() {
         )}
       </ScrollView>
 
+      {/* Form praktikum / kelas / jadwal */}
       <Modal
         visible={formOpen}
         transparent
@@ -1070,6 +1193,209 @@ export default function AsistenKelolaDataScreen() {
         </View>
       </Modal>
 
+      {/* Peserta kelas */}
+      <Modal
+        visible={!!pesertaKelas}
+        transparent
+        animationType="slide"
+        onRequestClose={tutupPeserta}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.eyebrow}>PESERTA KELAS</Text>
+            <Text style={styles.modalTitle}>Kelas {pesertaKelas?.nama}</Text>
+            <Text style={[styles.helper, styles.modalSubtitle]}>
+              {pesertaKelas ? namaPraktikum(pesertaKelas.praktikumId) : ""} ·{" "}
+              {pesertaList.filter((p) => p.aktif).length} aktif dari{" "}
+              {pesertaList.length}
+            </Text>
+            {pesertaMsg ? (
+              <Text accessibilityRole="alert" style={styles.feedback}>
+                {pesertaMsg}
+              </Text>
+            ) : null}
+
+            {addMode ? (
+              <>
+                <TextInput
+                  accessibilityLabel="Cari Praktikan"
+                  value={pesertaSearch}
+                  onChangeText={setPesertaSearch}
+                  placeholder="Cari nama atau NIM..."
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.input}
+                />
+                {loadingPraktikan ? (
+                  <View style={styles.state}>
+                    <ActivityIndicator color={colors.primary} />
+                    <Text style={styles.helper}>Memuat daftar Praktikan...</Text>
+                  </View>
+                ) : errorPraktikan ? (
+                  <View style={styles.state}>
+                    <Text style={styles.helper}>
+                      Gagal memuat daftar Praktikan.
+                    </Text>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => void muatPraktikan()}
+                      style={styles.smallButton}
+                    >
+                      <Text style={styles.smallButtonText}>Coba lagi</Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <ScrollView
+                    style={styles.memberScroll}
+                    nestedScrollEnabled
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    {kandidat.length ? (
+                      kandidat.map((item) => {
+                        const terkunci = item.terdaftar !== null;
+                        const dipilih = selectedUids.includes(item.uid);
+                        return (
+                          <Pressable
+                            key={item.uid}
+                            accessibilityRole="checkbox"
+                            accessibilityState={{
+                              checked: dipilih,
+                              disabled: terkunci,
+                            }}
+                            disabled={terkunci}
+                            onPress={() => togglePilihan(item.uid)}
+                            style={[
+                              styles.memberRow,
+                              terkunci && styles.memberRowDisabled,
+                            ]}
+                          >
+                            <View
+                              style={[
+                                styles.checkbox,
+                                dipilih && styles.checkboxOn,
+                              ]}
+                            >
+                              {dipilih ? (
+                                <Text style={styles.checkmark}>✓</Text>
+                              ) : null}
+                            </View>
+                            <View style={styles.cardCopy}>
+                              <Text style={styles.memberName}>{item.nama}</Text>
+                              <Text style={styles.memberDetail}>
+                                {item.nim ? `NIM ${item.nim}` : "NIM tidak tersedia"}
+                              </Text>
+                            </View>
+                            {terkunci ? (
+                              <Text style={styles.memberTag}>
+                                {item.terdaftar === "aktif"
+                                  ? "Sudah di kelas ini"
+                                  : "Nonaktif di kelas ini"}
+                              </Text>
+                            ) : null}
+                          </Pressable>
+                        );
+                      })
+                    ) : (
+                      <Text style={styles.helper}>
+                        Tidak ada Praktikan yang cocok.
+                      </Text>
+                    )}
+                  </ScrollView>
+                )}
+                <View style={[styles.inline, styles.modalActions]}>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => {
+                      setAddMode(false);
+                      setSelectedUids([]);
+                    }}
+                    style={[styles.modalButton, styles.cancel]}
+                  >
+                    <Text>Batal</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={busy || selectedUids.length === 0}
+                    onPress={tambahkanPeserta}
+                    style={[
+                      styles.modalButton,
+                      styles.save,
+                      (busy || selectedUids.length === 0) && styles.saveDisabled,
+                    ]}
+                  >
+                    <Text style={styles.saveText}>
+                      {busy
+                        ? "Menambahkan..."
+                        : `Tambahkan (${selectedUids.length})`}
+                    </Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <>
+                <ScrollView
+                  style={styles.memberScroll}
+                  nestedScrollEnabled
+                >
+                  {pesertaList.length ? (
+                    pesertaList.map((item) => {
+                      const profil = petaByUid.get(item.uid);
+                      return (
+                        <View key={item.id} style={styles.memberRow}>
+                          <View style={styles.cardCopy}>
+                            <Text style={styles.memberName}>
+                              {profil?.nama ?? item.nama ?? item.uid}
+                            </Text>
+                            <Text style={styles.memberDetail}>
+                              {(profil?.nim ?? item.nim)
+                                ? `NIM ${profil?.nim ?? item.nim}`
+                                : "NIM tidak tersedia"}
+                              {item.aktif ? "" : " · Nonaktif"}
+                            </Text>
+                          </View>
+                          <Pressable
+                            accessibilityRole="button"
+                            disabled={busy}
+                            onPress={() =>
+                              void ubahStatusPeserta(item.uid, !item.aktif)
+                            }
+                            style={styles.smallButton}
+                          >
+                            <Text style={styles.smallButtonText}>
+                              {item.aktif ? "Nonaktifkan" : "Aktifkan"}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      );
+                    })
+                  ) : (
+                    <Text style={styles.helper}>
+                      Belum ada peserta di kelas ini.
+                    </Text>
+                  )}
+                </ScrollView>
+                <View style={[styles.inline, styles.modalActions]}>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={tutupPeserta}
+                    style={[styles.modalButton, styles.cancel]}
+                  >
+                    <Text>Tutup</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={masukModeTambah}
+                    style={[styles.modalButton, styles.save]}
+                  >
+                    <Text style={styles.saveText}>＋ Tambah Peserta</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Konfirmasi aktif / nonaktif */}
       <Modal
         visible={!!pendingAction}
         transparent
@@ -1080,13 +1406,10 @@ export default function AsistenKelolaDataScreen() {
           <View style={styles.confirmCard}>
             <Text style={styles.eyebrow}>KONFIRMASI</Text>
             <Text style={styles.modalTitle}>{pendingText} data?</Text>
-            <Text style={styles.confirmText}>
-              {pendingAction?.mode === "hapus"
-                ? "Tidak ada sesi terkait. Data akan dihapus."
-                : pendingAction?.mode === "aktifkan"
-                  ? "Data akan diaktifkan kembali."
-                  : "Data memiliki sesi atau riwayat. Data akan dinonaktifkan agar riwayat tetap tersedia."}
-            </Text>
+            <Text style={styles.confirmText}>{pendingBody}</Text>
+            {confirmError ? (
+              <Text style={styles.errorText}>{confirmError}</Text>
+            ) : null}
             <View style={styles.inline}>
               <Pressable
                 accessibilityRole="button"
@@ -1219,7 +1542,7 @@ const styles = StyleSheet.create({
   },
   badgeActive: { backgroundColor: colors.highlight, color: colors.text },
   badgeInactive: { backgroundColor: colors.border, color: colors.textMuted },
-  cardActions: { flexDirection: "row", gap: 8, marginTop: 12 },
+  cardActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
   actionButton: {
     paddingHorizontal: 12,
     paddingVertical: 9,
@@ -1262,8 +1585,10 @@ const styles = StyleSheet.create({
     marginTop: 6,
     marginBottom: 12,
   },
+  modalSubtitle: { marginTop: -6, marginBottom: 12 },
+  modalActions: { marginTop: 12 },
   form: { paddingBottom: 4 },
-  field: { marginBottom: 13, flex: 1 },
+  field: { marginBottom: 13 },
   fieldLabel: {
     color: colors.text,
     fontSize: 12,
@@ -1271,6 +1596,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   choiceList: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
+  chipScroll: { gap: 7, paddingRight: 8 },
   choice: {
     paddingHorizontal: 10,
     paddingVertical: 9,
@@ -1284,6 +1610,7 @@ const styles = StyleSheet.create({
   },
   choiceText: { color: colors.textMuted, fontSize: 11, fontWeight: "700" },
   choiceTextSelected: { color: colors.bg },
+  choiceDisabled: { opacity: 0.45 },
   inline: { flexDirection: "row", gap: 9 },
   errorText: { color: colors.primary, fontSize: 12, marginBottom: 10 },
   modalButton: {
@@ -1295,6 +1622,7 @@ const styles = StyleSheet.create({
   },
   cancel: { borderWidth: 1, borderColor: colors.border },
   save: { backgroundColor: colors.primary },
+  saveDisabled: { opacity: 0.5 },
   saveText: { color: colors.bg, fontWeight: "800" },
   confirmText: {
     color: colors.textMuted,
@@ -1302,4 +1630,36 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     marginBottom: 16,
   },
+  memberScroll: { maxHeight: 340 },
+  memberRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  memberRowDisabled: { opacity: 0.55 },
+  memberName: { color: colors.text, fontSize: 13, fontWeight: "700" },
+  memberDetail: { color: colors.textMuted, fontSize: 11, marginTop: 3 },
+  memberTag: { color: colors.textMuted, fontSize: 10, fontWeight: "700" },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkboxOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  checkmark: { color: colors.bg, fontSize: 13, fontWeight: "800" },
+  smallButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  smallButtonText: { color: colors.text, fontSize: 11, fontWeight: "700" },
 });

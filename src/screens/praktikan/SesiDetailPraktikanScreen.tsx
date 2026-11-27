@@ -9,17 +9,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
-import PresensiFormModal, {
-  type HasilSubmitKode,
-} from '../../components/praktikan/PresensiFormModal';
 import PengajuanIzinFormModal, {
   type HasilSubmitIzinModal,
 } from '../../components/praktikan/PengajuanIzinFormModal';
 import {
   PresensiInfoModal,
-  PresensiSuccessModal,
   type AlasanPenolakanPresensi,
-  type DataSuksesPresensi,
 } from '../../components/praktikan/PresensiFeedbackModals';
 import {
   ambilNamaPraktikum,
@@ -81,14 +76,12 @@ export default function SesiDetailPraktikanScreen() {
     currentUser,
     isAuthenticated,
     isLoading,
-    isSubmittingPresensi,
     isSubmittingIzin,
     error,
     praktikum,
     sesi,
     presensi,
     pengajuanIzinMap,
-    catatPresensiPraktikan,
     ajukanIzinPraktikan,
     muatUlangData,
   } = usePraktikanStore();
@@ -101,11 +94,8 @@ export default function SesiDetailPraktikanScreen() {
   const [selectedSesiId, setSelectedSesiId] = useState<string>(
     paramSesiId ?? normalisasiIdSesiLokal(paramSesiId),
   );
-  const [formTerbuka, setFormTerbuka] = useState(false);
   const [formIzinTerbuka, setFormIzinTerbuka] = useState(false);
   const [pesanSuksesIzin, setPesanSuksesIzin] = useState<string | null>(null);
-  const [dataSuksesModal, setDataSuksesModal] =
-    useState<DataSuksesPresensi | null>(null);
   const [alasanInfoModal, setAlasanInfoModal] =
     useState<AlasanPenolakanPresensi | null>(null);
 
@@ -177,61 +167,9 @@ export default function SesiDetailPraktikanScreen() {
       setAlasanInfoModal('izin_diterima');
       return;
     }
-    setFormTerbuka(true);
-  };
-
-  const handleSubmitKode = async (kode: string): Promise<HasilSubmitKode> => {
-    if (!sesiAktif) {
-      setFormTerbuka(false);
-      return { ok: false };
-    }
-
-    const hasil = await catatPresensiPraktikan(
-      sesiAktif.id,
-      currentUser.id,
-      kode,
+    router.push(
+      `/praktikan/presensi/${encodeURIComponent(sesiAktif.id)}` as unknown as Href,
     );
-
-    if (!hasil.ok) {
-      if (
-        hasil.reason === 'kode_kosong' ||
-        hasil.reason === 'kode_format' ||
-        hasil.reason === 'kode_salah'
-      ) {
-        return {
-          ok: false,
-          pesanErrorInput: hasil.pesan,
-        };
-      }
-
-      setFormTerbuka(false);
-      if (
-        hasil.reason === 'sudah_presensi' ||
-        hasil.reason === 'izin_diterima' ||
-        hasil.reason === 'belum_dibuka' ||
-        hasil.reason === 'sudah_ditutup' ||
-        hasil.reason === 'belum_login' ||
-        hasil.reason === 'gagal_jaringan'
-      ) {
-        setAlasanInfoModal(hasil.reason);
-      }
-      return { ok: false };
-    }
-
-    setFormTerbuka(false);
-    setDataSuksesModal({
-      namaPraktikan: currentUser.nama,
-      nim: currentUser.nim,
-      namaPraktikum: ambilNamaPraktikum(
-        praktikum,
-        sesiAktif.praktikumId,
-        sesiAktif.namaPraktikum,
-      ),
-      pertemuanKe: sesiAktif.pertemuanKe,
-      kelas: sesiAktif.kelas,
-      waktuIso: hasil.presensi.waktu,
-    });
-    return { ok: true };
   };
 
   const handleSubmitIzinModal = async (
@@ -723,26 +661,14 @@ export default function SesiDetailPraktikanScreen() {
             !izinDiterima && (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Presensi Sekarang"
-                accessibilityState={{ disabled: isSubmittingPresensi }}
-                disabled={isSubmittingPresensi}
+                accessibilityLabel="Buka Halaman Presensi"
                 onPress={handlePresensiSekarang}
                 style={({ pressed }) => [
                   styles.primaryButton,
-                  isSubmittingPresensi && styles.disabledButton,
-                  pressed && !isSubmittingPresensi && styles.pressed,
+                  pressed && styles.pressed,
                 ]}
               >
-                <Text
-                  style={[
-                    styles.primaryButtonText,
-                    isSubmittingPresensi && styles.disabledButtonText,
-                  ]}
-                >
-                  {isSubmittingPresensi
-                    ? 'Menyimpan Presensi...'
-                    : 'Presensi Sekarang'}
-                </Text>
+                <Text style={styles.primaryButtonText}>Presensi Sekarang</Text>
               </Pressable>
             )}
 
@@ -762,23 +688,6 @@ export default function SesiDetailPraktikanScreen() {
           )}
         </View>
       )}
-
-      <PresensiFormModal
-        visible={formTerbuka}
-        namaPraktikum={namaPraktikum}
-        pertemuanKe={sesiAktif.pertemuanKe}
-        kelas={sesiAktif.kelas}
-        lab={sesiAktif.lab}
-        isSubmitting={isSubmittingPresensi}
-        onClose={() => setFormTerbuka(false)}
-        onSubmitKode={handleSubmitKode}
-      />
-
-      <PresensiSuccessModal
-        visible={Boolean(dataSuksesModal)}
-        data={dataSuksesModal}
-        onClose={() => setDataSuksesModal(null)}
-      />
 
       <PresensiInfoModal
         visible={Boolean(alasanInfoModal)}

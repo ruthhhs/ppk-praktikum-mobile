@@ -27,6 +27,10 @@ import type {
   PraktikumDoc,
   SesiDoc,
 } from "../../data/firestoreType";
+import {
+  bukaSesiDanNonaktifkanJadwal,
+  tutupSesiDanNonaktifkanJadwal,
+} from "../../services/firebase/sesiJadwal";
 
 export type SesiAsisten = {
   id: string;
@@ -88,6 +92,18 @@ type RawSesiItem = SesiDoc & {
   praktikumId?: string;
 };
 
+export type JadwalSiap = {
+  id: string;
+  kelasId: string;
+  kelas: string;
+  praktikum: string;
+  pertemuanKe: number;
+  lab: string;
+  tanggal: string;
+  jamMulai: string;
+  jamSelesai: string;
+};
+
 type AsistenWorkflowStoreValue = {
   sesi: SesiAsisten[];
   pengajuan: PengajuanIzin[];
@@ -100,6 +116,12 @@ type AsistenWorkflowStoreValue = {
   putuskanIzin: (
     id: string,
     keputusan: "diterima" | "ditolak",
+  ) => Promise<Result>;
+    jadwalSiap: JadwalSiap[];
+  bukaSesiDariJadwal: (
+    jadwalId: string,
+    kode: string,
+    catatan?: string,
   ) => Promise<Result>;
 };
 
@@ -490,6 +512,39 @@ export function AsistenWorkflowStoreProvider({
     kodePresensiMap,
   ]);
 
+ 
+  // Jadwal aktif milik kelas saya yang belum dipakai sesi dibuka/ditutup.
+  const jadwalSiap = useMemo<JadwalSiap[]>(() => {
+    const dipakai = new Set(
+      sesi.filter((s) => s.jadwalId && s.status !== "belum_dibuka").map((s) => s.jadwalId),
+    );
+    return jadwalList
+      .filter((j) => j.aktif && !dipakai.has(j.id))
+      .flatMap((j) => {
+        const kelas = kelasSaya.find((k) => k.id === j.kelasId);
+        if (!kelas) return [];
+        const praktikum = praktikumList.find((p) => p.id === kelas.praktikumId);
+        return [
+          {
+            id: j.id,
+            kelasId: kelas.id,
+            kelas: kelas.nama,
+            praktikum: praktikum?.nama ?? "Praktikum",
+            pertemuanKe: j.pertemuanKe,
+            lab: j.lokasi,
+            tanggal: j.tanggal,
+            jamMulai: j.jamMulai,
+            jamSelesai: j.jamSelesai,
+          },
+        ];
+      })
+      .sort(
+        (a, b) =>
+          a.tanggal.localeCompare(b.tanggal) ||
+          a.jamMulai.localeCompare(b.jamMulai),
+      );
+  }, [jadwalList, kelasSaya, praktikumList, sesi]);
+
   // 5. Construct Pengajuan list across my sessions
   const pengajuan = useMemo<PengajuanIzin[]>(() => {
     const all = Object.values(pengajuanMap).flat();
@@ -641,17 +696,16 @@ export function AsistenWorkflowStoreProvider({
     }
 
     try {
-      await Promise.all([
-        updateDocument(firestoreRefs.sesiDoc(id), {
-          status: "dibuka",
-          openedAt: serverTimestamp(),
-          catatan: catatan?.trim() || item.catatan || "",
-        }),
-        setDocument(firestoreRefs.kodePresensi(id), {
-          kode: kode.trim(),
-          updatedAt: serverTimestamp(),
-        }),
-      ]);
+      // jadwalId hanya dipakai bila dokumennya memang ada (data lama bisa kosong).
+      const jadwalId = jadwalList.some((j) => j.id === item.jadwalId)
+        ? item.jadwalId
+        : undefined;
+      await bukaSesiDanNonaktifkanJadwal({
+        sesiId: id,
+        jadwalId,
+        kode: kode.trim(),
+        catatan: catatan?.trim() || item.catatan || "",
+      });
 
       setKodePresensiMap((prev) => ({ ...prev, [id]: kode.trim() }));
 
@@ -677,16 +731,93 @@ export function AsistenWorkflowStoreProvider({
     }
 
     try {
-      await updateDocument(firestoreRefs.sesiDoc(id), {
-        status: "ditutup",
-        closedAt: serverTimestamp(),
-      });
+      const jadwalId = jadwalList.some((j) => j.id === item.jadwalId)
+        ? item.jadwalId
+        : undefined;
+      await tutupSesiDanNonaktifkanJadwal({ sesiId: id, jadwalId });
 
       return { success: true, message: "Sesi berhasil ditutup." };
     } catch (error) {
       return {
         success: false,
         message: `Sesi gagal ditutup (${getFirestoreErrorCode(error)}).`,
+      };
+    }
+  }
+
+  async function bukaSesiDariJadwal(
+    jadwalId: string,
+    kode: string,
+    catatan?: string,
+  ): Promise<Result> {
+    const authError = requireAssistant();
+    if (authError) return authError;
+
+    if (!/^\d{4}$/.test(kode)) {
+      return { success: false, message: "Kode presensi harus tepat 4 digit." };
+    }
+
+    const jadwal = jadwalList.find((j) => j.id === jadwalId);
+    if (!jadwal || !jadwal.aktif) {
+      return { success: false, message: "Jadwal tidak aktif atau tidak ditemukan." };
+    }
+    const kelas = kelasSaya.find((k) => k.id === jadwal.kelasId);
+    if (!kelas) {
+      return {
+        success: false,
+        message: "Kelas tidak ditemukan di kelas yang Anda kelola.",
+      };
+    }
+    const praktikum = praktikumList.find((p) => p.id === kelas.praktikumId);
+
+    const sesiAda = sesi.find((s) => s.jadwalId === jadwalId);
+    if (sesiAda && sesiAda.status !== "belum_dibuka") {
+      return {
+        success: false,
+        message: "Jadwal ini sudah dipakai untuk sesi yang dibuka atau ditutup.",
+      };
+    }
+
+    const catatanBersih = catatan?.trim() || "";
+    const payload = {
+      jadwalId,
+      kelasId: kelas.id,
+      praktikumId: kelas.praktikumId,
+      praktikum: praktikum?.nama ?? "Praktikum",
+      pertemuanKe: jadwal.pertemuanKe,
+      kelas: kelas.nama,
+      lab: jadwal.lokasi,
+      tanggal: jadwal.tanggal,
+      jamMulai: jadwal.jamMulai,
+      jamSelesai: jadwal.jamSelesai,
+      catatan: catatanBersih,
+    };
+
+    try {
+      // Sesi belum_dibuka yang sudah ada dipakai ulang (mis. percobaan
+      // sebelumnya putus di tengah), supaya tidak muncul sesi ganda.
+      const sesiId =
+        sesiAda?.id ??
+        (await addDocument(firestoreRefs.sesi(), {
+          ...payload,
+          status: "belum_dibuka",
+          openedAt: null,
+          closedAt: null,
+        }));
+
+      await bukaSesiDanNonaktifkanJadwal({
+        sesiId,
+        jadwalId,
+        kode: kode.trim(),
+        catatan: catatanBersih,
+      });
+      setKodePresensiMap((prev) => ({ ...prev, [sesiId]: kode.trim() }));
+
+      return { success: true, message: "Sesi berhasil dibuka." };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Sesi gagal dibuka (${getFirestoreErrorCode(error)}).`,
       };
     }
   }
@@ -757,6 +888,8 @@ export function AsistenWorkflowStoreProvider({
         buka,
         tutup,
         putuskanIzin,
+        jadwalSiap,
+        bukaSesiDariJadwal,
       }}
     >
       {children}

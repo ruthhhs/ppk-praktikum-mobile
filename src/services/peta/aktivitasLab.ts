@@ -103,7 +103,10 @@ export function hitungAktivitasLab(
   const kandidat: AktivitasLabItem[] = [];
 
   for (const j of data.jadwal) {
-    if (!j.aktif) continue;
+    // Jadwal dinonaktifkan otomatis saat sesinya dibuka/ditutup. Jadwal
+    // nonaktif tetap dihitung selama sesinya dibuka agar praktikum yang
+    // sedang berjalan tetap tampil.
+    if (!j.aktif && statusPerJadwal.get(j.id) !== 'dibuka') continue;
     const kelas = kelasDiLab.get(j.kelasId);
     if (!kelas) continue;
 

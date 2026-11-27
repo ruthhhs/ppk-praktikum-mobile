@@ -68,6 +68,7 @@ export type Sesi = {
   id: string;
   jadwalId?: string;
   kelasId?: string;
+  labId?: string;
   praktikumId: string;
   namaPraktikum?: string;
   pertemuanKe: number;
@@ -332,6 +333,7 @@ type KelasFirestoreDoc = {
   id: string;
   nama: string;
   praktikumId: string;
+  labId?: string;
   aktif: boolean;
 };
 
@@ -466,6 +468,22 @@ export function muatUlangDataPraktikan() {
 let activeSubscriberCount = 0;
 let cleanupMasterListeners: (() => void) | null = null;
 let resinkronkanSubkoleksiSesiAktif: (() => void) | null = null;
+
+export function resinkronkanPresensiSesi() {
+  resinkronkanSubkoleksiSesiAktif?.();
+}
+
+export function simpanPresensiLokalTercatat(presensiBaru: Presensi) {
+  updateState({
+    presensiTambahan: [presensiBaru, ...localState.presensiTambahan],
+    tambahanHadirPerSesi: {
+      ...localState.tambahanHadirPerSesi,
+      [presensiBaru.sesiId]:
+        (localState.tambahanHadirPerSesi[presensiBaru.sesiId] ?? 0) + 1,
+    },
+  });
+  resinkronkanSubkoleksiSesiAktif?.();
+}
 let lastSubscribedUserId: string | null = null;
 let lastSubscribedRefreshKey = -1;
 
@@ -774,9 +792,9 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
             const items: JadwalFirestoreDoc[] = [];
             for (const docSnap of docs) {
               const data = docSnap as unknown as Record<string, unknown>;
-              if (data.aktif === false) {
-                continue;
-              }
+              // Jangan buang jadwal dengan aktif === false karena pembukaan/penutupan sesi
+              // menonaktifkan jadwal asalnya (bukaSesiDanNonaktifkanJadwal), sedangkan sesi
+              // tetap membutuhkan jadwalId untuk menampilkan pertemuanKe, tanggal, jam, dan lokasi.
               items.push({
                 id: docSnap.id,
                 kelasId:
@@ -820,6 +838,9 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
             const items: SesiFirestoreRaw[] = [];
             for (const docSnap of docs) {
               const data = docSnap as unknown as Record<string, unknown>;
+              if (data.aktif === false) {
+                continue;
+              }
               const rawStatus = data.status;
               const status: SesiStatus =
                 rawStatus === 'dibuka' ||
@@ -1037,6 +1058,10 @@ function ensureFirestoreListeners(activeUserId: string | null, refreshKey: numbe
                   id: kelasId,
                   nama: kelasDoc.nama,
                   praktikumId: kelasDoc.praktikumId,
+                  labId:
+                    typeof kelasDoc.labId === 'string' && kelasDoc.labId.trim()
+                      ? kelasDoc.labId.trim()
+                      : undefined,
                   aktif: true,
                 });
               } else {
@@ -1287,6 +1312,7 @@ export function usePraktikanStore() {
           id: raw.id,
           jadwalId: raw.jadwalId ?? jadwalDoc?.id,
           kelasId: resolvedKelasId || undefined,
+          labId: kelasDoc?.labId,
           praktikumId: resolvedPraktikumId,
           namaPraktikum: raw.namaPraktikum ?? praktikumDoc?.nama ?? 'Praktikum',
           pertemuanKe: raw.pertemuanKe ?? jadwalDoc?.pertemuanKe ?? 1,

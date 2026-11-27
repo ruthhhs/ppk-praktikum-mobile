@@ -89,6 +89,60 @@ File lokal `google-services.json` tidak dikirim lewat Git. PM/Dev A yang memilik
 
 `app.config.js` memakai file tersebut saat build EAS, dan memakai `./google-services.json` untuk setup lokal. Variabel `EXPO_PUBLIC_FIREBASE_*` yang diperlukan untuk bundle juga harus tersedia di environment EAS terkait; nilainya konfigurasi client, bukan rahasia. Jangan masukkan token AI ke environment `EXPO_PUBLIC_*`.
 
+#### Menjalankan Android Emulator
+
+1. Buka Android Studio → **More Actions → Virtual Device Manager**.
+2. Nyalakan emulator dengan menekan **Play**, lalu tunggu sampai selesai boot.
+3. Pastikan development APK SIP! sudah terpasang di emulator.
+4. Dari root repository, jalankan `npx expo start --dev-client`.
+5. Setelah Metro berjalan, tekan `a` di terminal Metro untuk membuka aplikasi di emulator.
+
+#### Menjalankan Firebase Emulator Suite
+
+Gunakan `demo-sip` untuk pengujian lokal, bukan project Firebase tim.
+
+Di terminal pertama, jalankan:
+
+```powershell
+npm --prefix functions ci
+npm --prefix functions run build
+npx firebase-tools emulators:start --only firestore,functions --project demo-sip
+```
+
+Biarkan terminal emulator tetap terbuka. Di terminal kedua, jalankan tes Firestore Rules:
+
+```powershell
+node --test scripts/firestore-rules.test.mjs
+```
+
+Setelah tes selesai, hentikan emulator dengan `Ctrl+C` di terminal pertama. Jika port emulator sedang dipakai, hentikan emulator lama sebelum menjalankan yang baru.
+
+#### Deploy Cloud Functions ke project tim
+
+Deployment dilakukan oleh PM atau Dev A yang memiliki akses ke Firebase project tim. Koordinasikan dengan PM terlebih dahulu karena deployment memperbarui Functions aktif.
+
+Login dan pastikan project tim terlihat:
+
+```
+npx firebase-tools login
+npx firebase-tools projects:list
+```
+
+Sebelum deployment, periksa Functions:
+
+```
+npm --prefix functions run lint
+npm --prefix functions run build
+```
+
+Setelah PM menyetujui deployment, jalankan dari root repository:
+
+```
+npx firebase-tools deploy --only functions --project sip-sprint-2-kelompok-6
+```
+
+Cloud Functions memerlukan paket Firebase Blaze. Jangan mengubah paket billing sendiri; koordinasikan dengan PM.
+
 #### Verifikasi dasar
 
 Jalankan pemeriksaan dari root repository:
@@ -102,7 +156,7 @@ npx expo export --platform android
 
 Untuk smoke test Auth, buat akun uji melalui aplikasi lalu periksa bahwa UID muncul di Authentication dan profil `users/{uid}` tersimpan dengan role awal `praktikan`. Akun Asisten disiapkan PM dengan mengubah role profil melalui Firebase Console; aplikasi tidak menyediakan aksi untuk menaikkan role. Uji Rules dengan akun uji yang berwenang dan yang tidak berwenang—jangan memakai Test mode atau akun produksi.
 
-**Status integrasi yang perlu diketahui:** Rules lokal saat ini masih menolak pembuatan dokumen presensi sampai desain validasi kode 4 digit disepakati PM. Alur presensi belum dapat dinyatakan lulus hanya dari smoke test setup ini. Indeks komposit juga perlu ditambahkan setelah query final dari Dev B/C tersedia.
+**Status integrasi:** Tes lokal memeriksa Rules dari repository menggunakan emulator. Sebelum demo, PM/Dev A perlu memastikan Rules dan Functions yang dibutuhkan sudah di-deploy ke project Firebase tim dan alur utama berhasil diuji dengan akun uji.
 
 ---
 
@@ -238,6 +292,18 @@ npx eas-cli@latest build --platform android --profile preview       # APK demo
 ```
 
 Setelah build ulang `development`, PM mengumumkan di grup, lalu **semua orang mengunduh APK terbaru** dari halaman Builds (bagian 4).
+
+### Checklist integrasi sebelum build final
+
+Sebelum membuat APK final:
+
+- Pastikan semua PR yang diperlukan untuk demo sudah di-merge ke `main`.
+- Tarik versi terbaru `main` dan pasang dependensi dengan `npm install`.
+- Jalankan pemeriksaan aplikasi dan Cloud Functions yang tercantum di bagian 2 README.
+- Uji alur utama dengan akun uji: Asisten membuka sesi, Praktikan melakukan presensi, lalu Asisten memeriksa rekap dan menutup sesi.
+- Uji notifikasi menggunakan perangkat uji dan token FCM yang terdaftar.
+- Pastikan environment EAS `preview` memiliki konfigurasi Firebase yang sesuai dengan project demo.
+- Setelah PM menyatakan integrasi siap, lanjutkan build final sesuai langkah di bawah.
 
 ### Jadwal build `preview`
 
