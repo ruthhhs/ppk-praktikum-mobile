@@ -14,13 +14,13 @@ import {
     useAsistenWorkflowStore,
     type PengajuanIzin,
 } from "../asisten/AsistenWorkflowStore";
+import KartuIzin from '../../components/izin/KartuIzin';
 
-type Filter = "menunggu" | "semua" | "diputuskan";
+type Filter = "menunggu" | "diputuskan";
 type Decision = "diterima" | "ditolak";
 
 const filterLabels: Record<Filter, string> = {
   menunggu: "Menunggu",
-  semua: "Semua",
   diputuskan: "Diputuskan",
 };
 
@@ -79,7 +79,6 @@ export default function AsistenIzinScreen() {
       pengajuan
         .filter(
           (item) =>
-            filter === "semua" ||
             (filter === "menunggu"
               ? item.status === "menunggu"
               : item.status !== "menunggu"),
@@ -111,17 +110,16 @@ export default function AsistenIzinScreen() {
           <Text style={styles.backArrow}>‹</Text>
           <Text style={styles.backText}>Kembali</Text>
         </Pressable>
-        <Text style={styles.eyebrow}>AREA ASISTEN</Text>
         <View style={styles.titleRow}>
           <View style={styles.titleCopy}>
             <Text style={styles.title}>Pengajuan Izin</Text>
             <Text style={styles.subtitle}>
-              Tinjau alasan, lalu tentukan keputusan secara manual.
+              Setujui atau tolak pengajuan izin praktikan.
             </Text>
           </View>
-          <View style={styles.countBubble}>
+          {/* <View style={styles.countBubble}>
             <Text style={styles.countText}>{pendingCount}</Text>
-          </View>
+          </View> */}
         </View>
 
         {feedback ? (
@@ -133,10 +131,16 @@ export default function AsistenIzinScreen() {
         <View style={styles.filters}>
           {(Object.keys(filterLabels) as Filter[]).map((value) => {
             const active = filter === value;
+            const tampilkanBadge = value === 'menunggu' && pendingCount > 0;
             return (
               <Pressable
                 key={value}
                 accessibilityRole="tab"
+                accessibilityLabel={
+                  tampilkanBadge
+                    ? `${filterLabels[value]}, ${pendingCount} pengajuan`
+                    : filterLabels[value]
+                }
                 accessibilityState={{ selected: active }}
                 onPress={() => setFilter(value)}
                 style={[
@@ -144,11 +148,33 @@ export default function AsistenIzinScreen() {
                   active && styles.filterButtonActive,
                 ]}
               >
-                <Text
-                  style={[styles.filterText, active && styles.filterTextActive]}
-                >
-                  {filterLabels[value]}
-                </Text>
+                <View style={styles.filterContent}>
+                  <Text
+                    style={[
+                      styles.filterText,
+                      active && styles.filterTextActive,
+                    ]}
+                  >
+                    {filterLabels[value]}
+                  </Text>
+                  {tampilkanBadge ? (
+                    <View
+                      style={[
+                        styles.filterBadge,
+                        active && styles.filterBadgeActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.filterBadgeText,
+                          active && styles.filterBadgeTextActive,
+                        ]}
+                      >
+                        {pendingCount > 99 ? '99+' : pendingCount}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
               </Pressable>
             );
           })}
@@ -158,69 +184,27 @@ export default function AsistenIzinScreen() {
           filtered.map((item) => {
             const session = sesi.find((entry) => entry.id === item.sesiId);
             return (
-              <View key={item.id} style={styles.requestCard}>
-                <View style={styles.cardHeader}>
-                  <View style={styles.studentInfo}>
-                    <Text style={styles.studentName}>{item.nama}</Text>
-                    <Text style={styles.studentMeta}>NIM {item.nim}</Text>
-                  </View>
-                  <Status status={item.status} />
-                </View>
-                <View style={styles.sessionInfo}>
-                  <Text style={styles.sessionLabel}>SESI TERKAIT</Text>
-                  <Text style={styles.sessionTitle}>
-                    {session
-                      ? `${session.praktikum} · Pertemuan ${session.pertemuanKe} · Kelas ${session.kelas}`
-                      : "Sesi tidak ditemukan"}
-                  </Text>
-                </View>
-                <Text style={styles.reasonLabel}>ALASAN</Text>
-                <Text style={styles.reason}>{item.alasan}</Text>
-                <View style={styles.classification}>
-                  <Text style={styles.classificationLabel}>KLASIFIKASI AI</Text>
-                  <Text
-                    style={[
-                      styles.classificationValue,
-                      item.statusKlasifikasi === "gagal" &&
-                        styles.classificationFailed,
-                    ]}
-                  >
-                    {item.statusKlasifikasi === "berhasil"
-                      ? (item.kategoriAI ?? "Kategori belum tersedia")
-                      : "Klasifikasi gagal · tinjau alasan secara manual"}
-                  </Text>
-                </View>
-                <Text style={styles.timestamp}>
-                  Diajukan {formatDate(item.createdAt)}
-                </Text>
-                {item.status !== "menunggu" ? (
-                  <Text style={styles.reviewedText}>
-                    Diputuskan oleh Asisten ·{" "}
-                    {item.reviewedAt
-                      ? formatDate(item.reviewedAt)
-                      : "Waktu tidak tersedia"}
-                  </Text>
-                ) : (
-                  <View style={styles.decisionActions}>
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() => setSelected({ item, decision: "ditolak" })}
-                      style={[styles.decisionButton, styles.rejectButton]}
-                    >
-                      <Text style={styles.rejectText}>Tolak</Text>
-                    </Pressable>
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() =>
-                        setSelected({ item, decision: "diterima" })
-                      }
-                      style={[styles.decisionButton, styles.acceptButton]}
-                    >
-                      <Text style={styles.acceptText}>Terima</Text>
-                    </Pressable>
-                  </View>
-                )}
-              </View>
+              <KartuIzin
+                key={item.id}
+                nama={item.nama}
+                nim={item.nim}
+                judulSesi={
+                  session
+                    ? `${session.praktikum} ${session.kelas} - Pertemuan ${session.pertemuanKe}`
+                    : 'Sesi tidak ditemukan'
+                }
+                status={item.status}
+                sentimen={
+                  item.statusKlasifikasi === 'berhasil' ? item.kategoriAI : undefined
+                }
+                alasan={item.alasan}
+                diajukanPada={formatDate(item.createdAt)}
+                diputuskanPada={
+                  item.reviewedAt ? formatDate(item.reviewedAt) : undefined
+                }
+                onTolak={() => setSelected({ item, decision: 'ditolak' })}
+                onTerima={() => setSelected({ item, decision: 'diterima' })}
+              />
             );
           })
         ) : (
@@ -232,7 +216,7 @@ export default function AsistenIzinScreen() {
                 : "Belum ada pengajuan"}
             </Text>
             <Text style={styles.emptyText}>
-              Pengajuan izin untuk sesi yang dikelola akan muncul di sini.
+              Pengajuan izin akan muncul di sini.
             </Text>
           </View>
         )}
@@ -375,6 +359,24 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: colors.surface,
   },
+    filterContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  filterBadge: {
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    backgroundColor: colors.highlight,
+  },
+  filterBadgeActive: { backgroundColor: colors.bg },
+  filterBadgeText: { color: colors.text, fontSize: 11, fontWeight: '800' },
+  filterBadgeTextActive: { color: colors.primary },
   cardHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
