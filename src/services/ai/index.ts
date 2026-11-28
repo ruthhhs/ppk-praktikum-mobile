@@ -1,159 +1,109 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
+// Adapter AI untuk pengajuan izin.
+// Memakai model sentimen lokal dari repo pengajar (sentiment.js + model-edom.json).
+// Tanpa jaringan, tanpa API key. Hasilnya hanya informasi pendukung untuk Asprak.
+//
+// Letakkan di src/services/ai/ bersama:
+//   - sentiment.js        (salin dari repo pengajar)
+//   - model-edom.json     (salin dari repo pengajar; JANGAN pakai model.json)
+//   - EDOM-LICENSE.txt dan EDOM-ATTRIBUTION.txt (salin; lisensi MIT dataset)
+//
+// Nama fungsi dan bentuk hasil sama dengan versi lama, jadi praktikanStore
+// dan layar izin tidak perlu diubah.
+
 export type StatusKlasifikasiAI = 'berhasil' | 'gagal';
+
+export type SentimenAI = 'positif' | 'netral' | 'negatif';
 
 export type HasilKlasifikasiAI = {
   statusKlasifikasi: StatusKlasifikasiAI;
-  kategoriAI?: string;
+  // Nama field dipertahankan (kategoriAI) demi kontrak data; isinya sentimen.
+  kategoriAI?: SentimenAI;
   pesan?: string;
 };
 
-const AI_TIMEOUT_MS = 10000;
+type HasilModel = {
+  label: string | null;
+  status: string;
+};
 
-function ekstrakKategoriDariRespons(data: unknown): string | undefined {
-  if (!data) {
-    return undefined;
+type Klasifikator = (teks: string) => HasilModel;
+
+const LABEL_VALID: readonly string[] = ['positif', 'netral', 'negatif'];
+
+let klasifikator: Klasifikator | null = null;
+let gagalMemuat = false;
+
+// Dimuat sekali dan malas (saat izin pertama dikirim), supaya model
+// 273 KiB tidak diproses saat aplikasi baru dibuka.
+function ambilKlasifikator(): Klasifikator | null {
+  if (klasifikator) {
+    return klasifikator;
   }
-
-  if (Array.isArray(data)) {
-    for (const item of data) {
-      const hasilItem = ekstrakKategoriDariRespons(item);
-      if (hasilItem) {
-        return hasilItem;
-      }
-    }
-    return undefined;
+  if (gagalMemuat) {
+    return null;
   }
-
-  if (typeof data !== 'object') {
-    return undefined;
+  try {
+    const { createSentimentClassifier } = require('./sentiment');
+    const model = require('./model-edom.json');
+    klasifikator = createSentimentClassifier(model) as Klasifikator;
+    return klasifikator;
+  } catch {
+    gagalMemuat = true;
+    return null;
   }
+}
 
-  const record = data as Record<string, unknown>;
-  const kandidatLangsung = [
-    record.kategori,
-    record.kategoriAI,
-    record.category,
-    record.label,
-    record.prediction,
-    record.prediksi,
-    record.result,
-    record.hasil,
-    record.class_name,
-    record.kelas,
-  ];
-
-  for (const nilai of kandidatLangsung) {
-    if (typeof nilai === 'string' && nilai.trim().length > 0) {
-      return nilai.trim();
-    }
+function pesanGagal(status: string): string {
+  if (status === 'empty_input') {
+    return 'Alasan belum dapat dianalisis. Pengajuan tetap disimpan untuk diperiksa Asprak.';
   }
-
-  const kandidatNested = [
-    record.data,
-    record.output,
-    record.response,
-    record.predictions,
-    record.choices,
-  ];
-
-  for (const nested of kandidatNested) {
-    if (nested && typeof nested === 'object') {
-      const hasilNested = ekstrakKategoriDariRespons(nested);
-      if (hasilNested) {
-        return hasilNested;
-      }
-    }
+  if (status === 'unknown_vocabulary') {
+    return 'Alasan tidak memuat kata yang dikenali model. Pengajuan tetap disimpan untuk diperiksa Asprak.';
   }
-
-  return undefined;
+  return 'Analisis sentimen tidak tersedia. Pengajuan tetap disimpan untuk diperiksa Asprak.';
 }
 
 /**
- * Mengirim alasan izin ke API model AI yang disediakan pengajar untuk mendapatkan prediksi kategori alasan.
- * - Tidak menyimpan endpoint rahasia atau API key di kode sumber (membaca dari EXPO_PUBLIC_AI_API_URL).
- * - Tidak mengarang kategori jika API belum dikonfigurasi atau gagal merespons.
- * - Kegagalan API mengembalikan statusKlasifikasi: 'gagal' agar pengajuan izin tetap tersimpan
- *   dan dapat diperiksa secara manual oleh asisten.
+ * Menganalisis sentimen alasan izin dengan model lokal.
+ * - label null (teks kosong atau kata tidak dikenali) diperlakukan GAGAL, bukan netral.
+ * - Semua kegagalan mengembalikan statusKlasifikasi 'gagal' agar pengajuan
+ *   tetap tersimpan dan dapat diperiksa manual oleh Asprak.
+ * - Hasil tidak pernah dipakai sebagai keputusan otomatis.
  */
 export async function klasifikasikanAlasanIzin(
   alasanInput: string,
 ): Promise<HasilKlasifikasiAI> {
   const alasan = alasanInput.trim();
-  const endpoint = (process.env.EXPO_PUBLIC_AI_API_URL ?? '').trim();
-  const apiToken = (process.env.EXPO_PUBLIC_AI_API_TOKEN ?? '').trim();
+  const klasifikasi = ambilKlasifikator();
 
-  if (!endpoint) {
+  if (!klasifikasi) {
     return {
       statusKlasifikasi: 'gagal',
       pesan:
-        'Layanan klasifikasi AI belum dikonfigurasi. Pengajuan izin tetap disimpan untuk diperiksa manual oleh asisten.',
+        'Model sentimen tidak dapat dimuat. Pengajuan tetap disimpan untuk diperiksa Asprak.',
     };
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    controller.abort();
-  }, AI_TIMEOUT_MS);
-
   try {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    };
+    const hasil = klasifikasi(alasan);
 
-    if (apiToken) {
-      const cleanToken = apiToken.startsWith('Bearer ')
-        ? apiToken.slice(7).trim()
-        : apiToken;
-      headers.Authorization = `Bearer ${cleanToken}`;
-      headers['x-api-key'] = cleanToken;
-    }
-
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        alasan,
-        text: alasan,
-        input: alasan,
-      }),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
+    if (hasil.label === null || !LABEL_VALID.includes(hasil.label)) {
       return {
         statusKlasifikasi: 'gagal',
-        pesan: `Layanan AI mengembalikan status ${response.status}. Pengajuan tetap diteruskan untuk peninjauan manual asisten.`,
-      };
-    }
-
-    const body: unknown = await response.json();
-    const kategori = ekstrakKategoriDariRespons(body);
-
-    if (!kategori) {
-      return {
-        statusKlasifikasi: 'gagal',
-        pesan:
-          'Format respons klasifikasi AI tidak memuat kategori yang dikenali. Pengajuan tetap disimpan untuk ditinjau asisten.',
+        pesan: pesanGagal(hasil.status),
       };
     }
 
     return {
       statusKlasifikasi: 'berhasil',
-      kategoriAI: kategori,
+      kategoriAI: hasil.label as SentimenAI,
     };
-  } catch (err) {
-    const isAbort =
-      err instanceof Error &&
-      (err.name === 'AbortError' ||
-        err.message.toLowerCase().includes('aborted'));
-
+  } catch {
     return {
       statusKlasifikasi: 'gagal',
-      pesan: isAbort
-        ? 'Waktu tunggu layanan AI habis. Pengajuan izin tetap disimpan untuk diperiksa manual oleh asisten.'
-        : 'Tidak dapat terhubung ke layanan AI. Pengajuan izin tetap disimpan untuk diperiksa manual oleh asisten.',
+      pesan:
+        'Analisis sentimen gagal diproses. Pengajuan tetap disimpan untuk diperiksa Asprak.',
     };
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
