@@ -1,21 +1,18 @@
 import { useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import {
   ambilNamaPraktikum,
   formatRentangJam,
   formatTanggalIndonesia,
   formatWaktuLengkapWib,
-  LABEL_STATUS,
   LABEL_STATUS_IZIN,
   usePraktikanStore,
   WARNA,
@@ -51,79 +48,15 @@ function StatusIzinBadge({ status }: { status: StatusIzinPraktikan }) {
 
 export default function PraktikanIzinScreen() {
   const {
-    currentUser,
     isAuthenticated,
-    isLoading,
-    isSubmittingIzin,
     error,
     praktikum,
     sesi,
-    presensi,
-    pengajuanIzinMap,
     daftarPengajuanIzin,
-    ajukanIzinPraktikan,
     muatUlangData,
   } = usePraktikanStore();
 
-  const params = useLocalSearchParams<{ sesiId?: string | string[] }>();
-  const paramSesiId = Array.isArray(params.sesiId)
-    ? params.sesiId[0]
-    : params.sesiId;
-
-  const [pilihanSesiId, setPilihanSesiId] = useState<string | null>(
-    paramSesiId ?? null,
-  );
-  const [alasanInput, setAlasanInput] = useState('');
-  const [pesanErrorForm, setPesanErrorForm] = useState<string | null>(null);
-  const [infoSuksesBanner, setInfoSuksesBanner] = useState<{
-    judul: string;
-    isi: string;
-    kategoriAI?: string;
-    statusKlasifikasi: 'berhasil' | 'gagal';
-  } | null>(null);
   const [filterStatus, setFilterStatus] = useState<FilterStatusIzin>('semua');
-
-  const presensiSayaSet = useMemo(() => {
-    return new Set(
-      presensi
-        .filter((item) => item.userId === currentUser.id)
-        .map((item) => item.sesiId),
-    );
-  }, [currentUser.id, presensi]);
-
-  // Sesi yang memenuhi syarat untuk diajukan izin:
-  // belum ditutup (belum_dibuka atau dibuka), belum presensi, dan belum ada pengajuan izin
-  const sesiMemenuhiSyarat = useMemo(() => {
-    return sesi.filter(
-      (item) =>
-        item.status !== 'ditutup' &&
-        !presensiSayaSet.has(item.id) &&
-        !pengajuanIzinMap[item.id],
-    );
-  }, [pengajuanIzinMap, presensiSayaSet, sesi]);
-
-  const sesiTerpilih = useMemo(() => {
-    if (sesiMemenuhiSyarat.length === 0) {
-      return null;
-    }
-    if (pilihanSesiId) {
-      const cocok = sesiMemenuhiSyarat.find(
-        (item) => item.id === pilihanSesiId,
-      );
-      if (cocok) {
-        return cocok;
-      }
-    }
-    if (paramSesiId) {
-      const cocokParam = sesiMemenuhiSyarat.find(
-        (item) => item.id === paramSesiId,
-      );
-      if (cocokParam) {
-        return cocokParam;
-      }
-    }
-    return sesiMemenuhiSyarat[0];
-  }, [paramSesiId, pilihanSesiId, sesiMemenuhiSyarat]);
 
   const ringkasanIzin = useMemo(() => {
     let menunggu = 0;
@@ -152,46 +85,6 @@ export default function PraktikanIzinScreen() {
     }
     return daftarPengajuanIzin.filter((item) => item.status === filterStatus);
   }, [daftarPengajuanIzin, filterStatus]);
-
-  const panjangAlasan = alasanInput.trim().length;
-
-  const handleUbahAlasan = (teks: string) => {
-    setAlasanInput(teks.slice(0, 500));
-    if (pesanErrorForm) {
-      setPesanErrorForm(null);
-    }
-  };
-
-  const handleKirimPengajuan = async () => {
-    if (!sesiTerpilih || isSubmittingIzin) {
-      return;
-    }
-
-    setPesanErrorForm(null);
-    setInfoSuksesBanner(null);
-
-    const hasil = await ajukanIzinPraktikan(sesiTerpilih.id, alasanInput);
-    if (!hasil.ok) {
-      setPesanErrorForm(hasil.pesan);
-      return;
-    }
-
-    const namaMatkul = ambilNamaPraktikum(
-      praktikum,
-      sesiTerpilih.praktikumId,
-      sesiTerpilih.namaPraktikum,
-    );
-
-    setAlasanInput('');
-    setInfoSuksesBanner({
-      judul: `Pengajuan izin ${namaMatkul} (Pertemuan ${sesiTerpilih.pertemuanKe}) terkirim`,
-      isi:
-        hasil.pesanKlasifikasi ??
-        'Pengajuan izin berhasil disimpan dengan status Menunggu keputusan asisten.',
-      kategoriAI: hasil.pengajuan.kategoriAI,
-      statusKlasifikasi: hasil.pengajuan.statusKlasifikasi,
-    });
-  };
 
   if (!isAuthenticated) {
     return (
@@ -228,10 +121,10 @@ export default function PraktikanIzinScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.headerSection}>
-          <Text style={styles.screenTitle}>Pengajuan Izin</Text>
+          <Text style={styles.screenTitle}>Riwayat Izin</Text>
           <Text style={styles.screenSubtitle}>
-            Ajukan izin ketidakhadiran sebelum sesi ditutup dan pantau hasil
-            pemeriksaan asisten secara langsung.
+            Pantau status pengajuan izin dan hasil
+            pemeriksaan Asprak. Pengajuan baru dilakukan dari sesi aktif di Beranda.
           </Text>
         </View>
 
@@ -251,216 +144,6 @@ export default function PraktikanIzinScreen() {
             </Pressable>
           </View>
         ) : null}
-
-        {infoSuksesBanner ? (
-          <View style={styles.successBanner}>
-            <View style={styles.successHeaderRow}>
-              <Text style={styles.successBannerTitle}>
-                {infoSuksesBanner.judul}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Tutup pesan konfirmasi izin"
-                onPress={() => setInfoSuksesBanner(null)}
-                style={styles.closeSuccessBtn}
-              >
-                <Text style={styles.closeSuccessBtnText}>Tutup</Text>
-              </Pressable>
-            </View>
-            <Text style={styles.successBannerBody}>{infoSuksesBanner.isi}</Text>
-            <View style={styles.aiBadgeRow}>
-              <View style={styles.aiSupportBadge}>
-                <Text style={styles.aiSupportBadgeText}>
-                  {infoSuksesBanner.statusKlasifikasi === 'berhasil' &&
-                  infoSuksesBanner.kategoriAI
-                    ? `Prediksi AI (Pendukung): ${infoSuksesBanner.kategoriAI}`
-                    : 'Klasifikasi AI belum tersedia · Ditinjau manual asisten'}
-                </Text>
-              </View>
-            </View>
-          </View>
-        ) : null}
-
-        <View style={styles.formCard}>
-          <View style={styles.formHeaderBlock}>
-            <Text style={styles.sectionTitle}>Buat Pengajuan Izin Baru</Text>
-            <Text style={styles.sectionSubtitle}>
-              Pilih sesi praktikum yang belum ditutup dan belum kamu hadiri,
-              lalu isi alasan (10 sampai 500 karakter).
-            </Text>
-          </View>
-
-          {isLoading && sesi.length === 0 ? (
-            <View style={styles.inlineLoadingBox}>
-              <ActivityIndicator size="small" color={WARNA.primary} />
-              <Text style={styles.inlineLoadingText}>
-                Memuat daftar sesi praktikum...
-              </Text>
-            </View>
-          ) : sesiMemenuhiSyarat.length === 0 ? (
-            <View style={styles.noEligibleBox}>
-              <Text style={styles.noEligibleTitle}>
-                Tidak ada sesi yang dapat diajukan izin saat ini
-              </Text>
-              <Text style={styles.noEligibleBody}>
-                Semua sesi pada kelasmu sudah ditutup, sudah kamu hadiri, atau
-                sudah memiliki pengajuan izin aktif.
-              </Text>
-            </View>
-          ) : (
-            <>
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>1. Pilih Sesi Praktikum</Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.sessionSelectorRow}
-                >
-                  {sesiMemenuhiSyarat.map((item) => {
-                    const aktif = sesiTerpilih?.id === item.id;
-                    const namaMatkul = ambilNamaPraktikum(
-                      praktikum,
-                      item.praktikumId,
-                      item.namaPraktikum,
-                    );
-                    return (
-                      <Pressable
-                        key={item.id}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: aktif }}
-                        onPress={() => {
-                          setPilihanSesiId(item.id);
-                          setPesanErrorForm(null);
-                        }}
-                        style={({ pressed }) => [
-                          styles.sessionOptionCard,
-                          aktif && styles.sessionOptionCardActive,
-                          pressed && styles.pressed,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.sessionOptionCourse,
-                            aktif && styles.sessionOptionTextActive,
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {namaMatkul}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.sessionOptionMeta,
-                            aktif && styles.sessionOptionTextActive,
-                          ]}
-                        >
-                          Pertemuan {item.pertemuanKe} · Kelas {item.kelas}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.sessionOptionDate,
-                            aktif && styles.sessionOptionTextActive,
-                          ]}
-                        >
-                          {formatTanggalIndonesia(item.tanggal)} ·{' '}
-                          {LABEL_STATUS[item.status]}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-
-              {sesiTerpilih ? (
-                <View style={styles.selectedSessionDetailBox}>
-                  <Text style={styles.selectedSessionTitle}>
-                    Sesi Terpilih:{' '}
-                    {ambilNamaPraktikum(
-                      praktikum,
-                      sesiTerpilih.praktikumId,
-                      sesiTerpilih.namaPraktikum,
-                    )}{' '}
-                    (Pertemuan {sesiTerpilih.pertemuanKe})
-                  </Text>
-                  <Text style={styles.selectedSessionSub}>
-                    Kelas {sesiTerpilih.kelas} · {sesiTerpilih.lab} ·{' '}
-                    {formatTanggalIndonesia(sesiTerpilih.tanggal)} (
-                    {formatRentangJam(
-                      sesiTerpilih.jamMulai,
-                      sesiTerpilih.jamSelesai,
-                    )}
-                    )
-                  </Text>
-                </View>
-              ) : null}
-
-              <View style={styles.fieldGroup}>
-                <View style={styles.labelWithCounterRow}>
-                  <Text style={styles.fieldLabel}>
-                    2. Alasan Ketidakhadiran
-                  </Text>
-                  <Text
-                    style={[
-                      styles.charCounter,
-                      panjangAlasan > 0 &&
-                        panjangAlasan < 10 &&
-                        styles.charCounterWarn,
-                    ]}
-                  >
-                    {panjangAlasan}/500 karakter
-                  </Text>
-                </View>
-
-                <TextInput
-                  value={alasanInput}
-                  onChangeText={handleUbahAlasan}
-                  maxLength={500}
-                  multiline
-                  numberOfLines={4}
-                  textAlignVertical="top"
-                  editable={!isSubmittingIzin}
-                  placeholder="Tuliskan alasan tidak dapat mengikuti sesi praktikum ini (minimal 10 karakter)..."
-                  placeholderTextColor={WARNA.textMuted}
-                  accessibilityLabel="Alasan ketidakhadiran"
-                  style={[
-                    styles.reasonInput,
-                    pesanErrorForm ? styles.reasonInputError : null,
-                  ]}
-                />
-
-                {pesanErrorForm ? (
-                  <View style={styles.formErrorBox}>
-                    <Text style={styles.formErrorText}>{pesanErrorForm}</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.helperHint}>
-                    Alasan wajib 10 sampai 500 karakter dan tidak dapat diubah
-                    setelah dikirim. Klasifikasi AI bersifat pendukung dan
-                    keputusan akhir ditentukan oleh asisten.
-                  </Text>
-                )}
-              </View>
-
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Kirim Pengajuan Izin"
-                accessibilityState={{ disabled: isSubmittingIzin }}
-                disabled={isSubmittingIzin}
-                onPress={handleKirimPengajuan}
-                style={({ pressed }) => [
-                  styles.submitIzinButton,
-                  isSubmittingIzin && styles.disabledButton,
-                  pressed && !isSubmittingIzin && styles.pressed,
-                ]}
-              >
-                <Text style={styles.submitIzinButtonText}>
-                  {isSubmittingIzin
-                    ? 'Memproses & Klasifikasi AI...'
-                    : 'Kirim Pengajuan Izin'}
-                </Text>
-              </Pressable>
-            </>
-          )}
-        </View>
 
         <View style={styles.listHeaderSection}>
           <Text style={styles.sectionTitle}>Daftar & Status Pengajuan Saya</Text>
